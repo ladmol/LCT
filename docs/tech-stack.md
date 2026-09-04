@@ -22,6 +22,8 @@
 | 10 | OCR номера (когда читаем) | EasyOCR или PaddleOCR | Python | Готовые модели распознавания текста на изображении без дообучения, работают "из коробки" на кропах номерных знаков | Tesseract, кастомный CRNN |
 | 11 | Экспорт/оптимизация модели | ONNX Runtime / TensorRT (опционально) | Python/C++ (рантайм) | Ускорение инференса детектора и Re-ID модели за счёт графовой оптимизации и (для TensorRT) FP16/INT8 квантизации | OpenVINO (для CPU-инференса на Intel) |
 
+**Версия Python: 3.13**, зафиксирована в `backend/.python-version` и `ml/.python-version` (пакеты через uv). Проверено фактическим резолвом зависимостей (`uv pip compile`) по всему стеку сразу: под Python 3.14 не собирается **PaddlePaddle** (нет колёс под `cp314`, максимум — `cp313`), а вместе с ним и рабочий бэкенд PaddleOCR — весь остальной стек (torch/torchvision, opencv-python, ultralytics, easyocr, onnxruntime, faiss-cpu, qdrant-client, psycopg, sqlalchemy, fastapi, uvicorn, streamlit, gradio) под 3.14 собирается без проблем. 3.13 — самая новая версия, под которую резолвится весь список целиком без потери PaddleOCR как опции.
+
 ---
 
 ## 2. Требования к вычислительным мощностям (compute)
