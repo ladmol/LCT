@@ -13,13 +13,14 @@
 ## Коротко о решении
 
 ```
-Кадр → Детектор ТС (YOLOv8) → Кроп → Re-ID эмбеддер (FastReID: OSNet/ResNet50/TransReID)
-    + Атрибутные головы (цвет/тип кузова) → Fingerprint-вектор
-    → Vector DB (Qdrant/FAISS) → ANN-поиск → Re-ranking → Кандидаты
-    → Backend API (FastAPI) → Demo UI (Streamlit/Gradio)
+Камера/ПАК --POST /extract (push)--> Детектор (YOLOv8) → Кроп → Re-ID эмбеддер + Атрибутные головы
+    → Fingerprint-вектор → сохранение (Qdrant/FAISS + PostgreSQL) → автопоиск похожих → cluster_id
+
+Оператор --POST /search (read-only)--> тот же пайплайн → ANN-поиск → Re-ranking
+    → топ-N кандидатов + подсказка номера, если известен для кластера → Demo UI (React/Vite)
 ```
 
-Полная диаграмма и детали — в [docs/architecture.md](docs/architecture.md).
+Сервис не тянет видеопоток с камер — только принимает уже готовые снимки по HTTP push. Полная диаграмма и контракты API — в [docs/architecture.md](docs/architecture.md).
 
 ## Структура репозитория
 

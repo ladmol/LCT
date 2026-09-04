@@ -26,20 +26,26 @@ The design lives in three docs that together define the system — they cross-re
 
 ## Architecture at a glance
 
+Ingestion is **push, not stream**: cameras sit behind existing ПАК (recognition units) that already detect/crop the vehicle and often already OCR the plate themselves. This service never pulls RTSP/video — it only receives already-cropped-or-croppable frames over HTTP. Shared feature-extraction pipeline used by both endpoints below:
+
 ```
 Frame -> YOLOv8 detector -> crop/preprocess (OpenCV)
       -> Re-ID embedder (FastReID: OSNet/ResNet50, optionally TransReID)
          + attribute heads (color/body type/viewpoint)
       -> fused fingerprint vector (fixed-dim, L2-normalized)
-      -> Vector DB (Qdrant or FAISS) + relational metadata (Postgres/SQLite)
-      -> ANN search -> spatio-temporal/attribute prefilter -> k-reciprocal re-ranking
-      -> ranked candidates, with plate propagated from any clustered event that had a readable plate
 ```
 
-ML pipeline and backend are Python (package management via `uv`, one project each in `backend/` and `ml/` — kept separate so backend installs don't pull in heavy ML deps like torch). Backend is a single FastAPI service exposing `/extract`, `/search`, `/register_plate` (full contracts in `docs/architecture.md` §3.8). Demo UI is a React + TypeScript SPA (Vite, package management via `pnpm`, in `frontend/`) calling that API directly.
+- `POST /extract` — the camera/ПАК push endpoint. Runs the pipeline above, **saves** the event to the Vector DB + relational metadata (Postgres/SQLite), then auto-searches history (ANN -> spatio-temporal/attribute prefilter -> k-reciprocal re-ranking) to assign an existing `cluster_id` or create a new one. This is also how the hackathon demo populates its "history" — `ml/scripts/populate_vector_db.py` loops over a gallery dataset calling this same endpoint, simulating camera events, rather than writing to the DBs directly.
+- `POST /search` — the operator-facing, **read-only** endpoint (demo UI). Runs the same pipeline + matching logic, but never writes; returns ranked candidates, with a plate suggestion pulled from the matched cluster if any member of it has one.
+- `POST /register_plate` — operator manually attaches/confirms a plate for a `cluster_id`.
+
+Full request/response shapes are in `docs/architecture.md` §3.8 (agreed at sync point m1 — see `docs/dev-plan.md`; only the fingerprint dimension is still open, pinned at m2).
+
+ML pipeline and backend are Python (package management via `uv`, one project each in `backend/` and `ml/` — kept separate so backend installs don't pull in heavy ML deps like torch). Demo UI is a React + TypeScript SPA (Vite, package management via `pnpm`, in `frontend/`) calling the backend API directly.
 
 ## Key constraints to preserve when implementing
 
+- **`/extract` writes, `/search` doesn't.** Don't make `/extract` stateless (it must persist + auto-cluster) and don't make `/search` persist anything (it's a read-only lookup for the operator). Don't build live RTSP/video-stream ingestion — events arrive as discrete HTTP pushes from the camera/ПАК, per the diagram in `docs/architecture.md` §2.
 - **No training from scratch.** Detector (YOLOv8) and plate OCR (EasyOCR/PaddleOCR) are used pretrained, as-is. The Re-ID model starts from FastReID/torchreid pretrained weights (VeRi-776/VehicleID) and is fine-tuned — never trained from zero.
 - **Vector DB vs. relational DB split.** The vector index stores only `fingerprint_id` + `vector`. Everything descriptive (`camera_id`, `timestamp`, `bbox`, `track_id`, `plate_number`, `plate_confidence`, `color`, `body_type`, `viewpoint`, `cluster_id`) lives in the relational DB, joined by `fingerprint_id`. Don't push metadata fields into the vector store or vice versa (`docs/architecture.md` §5).
 - **`cluster_id` -> `plate_number` is the core mechanism** for the "suggest a plate for unreadable events" feature: if any event in a cluster has a recognized plate, it's proposed for the rest of the cluster. Any matching/clustering logic must populate `cluster_id` consistently for this to work.
