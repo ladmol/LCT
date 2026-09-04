@@ -4,7 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-This repository currently contains only planning documentation — no application code has been written yet. There are no build, lint, or test commands to run. Once code exists (per the phases in `docs/dev-plan.md`), this file should be updated with the actual commands (likely `pytest`, a linter, and `docker compose up` for local Qdrant/Postgres, given the chosen stack below).
+The repo has a scaffold (`backend/`, `ml/`, `frontend/` — see below) but no real implementation yet: modules under `backend/app/` and `ml/` are empty placeholder files. Fill them in per the phases in `docs/dev-plan.md`; there's no lint/test config set up yet, so add it (e.g. `pytest`, `ruff`) as part of Segment 1/2 rather than assuming it already exists.
+
+## Commands
+
+- `backend/`, `ml/` — Python via [uv](https://github.com/astral-sh/uv), pinned to **3.13** (`.python-version`; capped at `<3.14` because PaddlePaddle/PaddleOCR has no `cp314` wheels yet — see `docs/tech-stack.md`). Setup: `cd backend && uv sync` / `cd ml && uv sync`. Run a script: `uv run <file>.py`.
+- `frontend/` — React + TS via [pnpm](https://pnpm.io/). Setup: `cd frontend && pnpm install`. Dev server: `pnpm dev`. Build: `pnpm build`.
+- `docker compose up` (repo root) — starts Qdrant + PostgreSQL for local development, per `docker-compose.yml` / `.env.example`.
 
 ## What this project is
 
@@ -30,7 +36,7 @@ Frame -> YOLOv8 detector -> crop/preprocess (OpenCV)
       -> ranked candidates, with plate propagated from any clustered event that had a readable plate
 ```
 
-Everything — ML pipeline, backend, and demo UI — is intended to be Python, to avoid cross-language integration overhead during the hackathon (`docs/tech-stack.md` §1). Backend is a single FastAPI service exposing `/extract`, `/search`, `/register_plate` (full contracts in `docs/architecture.md` §3.8). Demo UI is Streamlit/Gradio calling that API directly — no separate frontend build step is planned.
+ML pipeline and backend are Python (package management via `uv`, one project each in `backend/` and `ml/` — kept separate so backend installs don't pull in heavy ML deps like torch). Backend is a single FastAPI service exposing `/extract`, `/search`, `/register_plate` (full contracts in `docs/architecture.md` §3.8). Demo UI is a React + TypeScript SPA (Vite, package management via `pnpm`, in `frontend/`) calling that API directly.
 
 ## Key constraints to preserve when implementing
 
