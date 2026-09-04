@@ -21,6 +21,15 @@
 
 Полная диаграмма и детали — в [docs/architecture.md](docs/architecture.md).
 
+## Структура репозитория
+
+- `backend/` — FastAPI-сервис (Трек B), пакеты через [uv](https://github.com/astral-sh/uv)
+- `ml/` — детектор, Re-ID модель, атрибуты, OCR, метрики (Трек A), пакеты через uv
+- `frontend/` — demo-UI, React + TS (Vite), пакеты через [pnpm](https://pnpm.io/)
+- `docs/` — архитектура, стек, план разработки
+- `data/` — датасеты и веса моделей (в git не попадают, см. `.gitignore`)
+- `docker-compose.yml` — Qdrant + PostgreSQL для локальной разработки
+
 ## Команда и роли
 
 Команда из двух разработчиков, работающих параллельными треками: **Инженер A — ML/Data** и **Инженер B — Backend/Infra/Frontend**, с точками синхронизации между ними. Таймлайн (Gantt) и распределение задач — в [docs/dev-plan.md](docs/dev-plan.md#2-таймлайн-параллельной-работы).
