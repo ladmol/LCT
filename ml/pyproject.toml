@@ -6,4 +6,9 @@ authors = [
     { name = "ladmol", email = "dima.ladmol@yandex.ru" }
 ]
 requires-python = ">=3.11,<3.14"
-dependencies = []
+dependencies = [
+    "opencv-python>=5.0.0.93",
+    "torch>=2.14.0",
+    "torchvision>=0.29.0",
+    "ultralytics>=8.4.143",
+]
