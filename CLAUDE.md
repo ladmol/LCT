@@ -45,6 +45,10 @@ Full request/response shapes are in `docs/architecture.md` §3.8 (agreed at sync
 
 ML pipeline and backend are Python (package management via `uv`, one project each in `backend/` and `ml/` — kept separate so backend installs don't pull in heavy ML deps like torch). Demo UI is a React + TypeScript SPA (Vite, package management via `pnpm`, in `frontend/`) calling the backend API directly.
 
+## Working conventions
+
+- **Never install tools or dependencies without asking first.** Don't run `uv add`, `uv add --dev`, `pnpm add`, `pip install`, or any other package-manager install/upgrade/remove command yourself. Instead, propose the exact command and wait for explicit approval before it gets run. This applies in `backend/`, `ml/`, and `frontend/` alike. Read-only commands (`uv sync`, `uv run`, `pnpm install` to sync the existing lockfile, `pnpm dev`, `pnpm build`) are fine without asking.
+
 ## Key constraints to preserve when implementing
 
 - **`/extract` writes, `/search` doesn't.** Don't make `/extract` stateless (it must persist + auto-cluster) and don't make `/search` persist anything (it's a read-only lookup for the operator). Don't build live RTSP/video-stream ingestion — events arrive as discrete HTTP pushes from the camera/ПАК, per the diagram in `docs/architecture.md` §2.
