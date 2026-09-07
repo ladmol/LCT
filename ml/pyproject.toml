@@ -1,0 +1,9 @@
+[project]
+name = "ml"
+version = "0.1.0"
+description = "Add your description here"
+authors = [
+    { name = "ladmol", email = "dima.ladmol@yandex.ru" }
+]
+requires-python = ">=3.11,<3.14"
+dependencies = []

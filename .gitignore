@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# uv
+uv.lock.bak
+
+# Node / frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Data & model weights (tracked as folders via .gitkeep, contents ignored)
+data/raw/*
+data/weights/*
+!data/raw/.gitkeep
+!data/weights/.gitkeep
+
+# Env
+.env
+.env.local
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
