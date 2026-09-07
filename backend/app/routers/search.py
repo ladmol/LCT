@@ -1,4 +1,4 @@
-from typing import Annotated, Optional
+from typing import Annotated
 
 from fastapi import APIRouter, File, Form, UploadFile
 from pydantic import BaseModel
@@ -7,9 +7,9 @@ router = APIRouter(tags=["search"])
 
 
 class SearchQuery(BaseModel):
-    plate_number: Optional[str] = None
-    fingerprint: Optional[list[float]] = None
-    top_k: Optional[int] = None
+    plate_number: str | None = None
+    fingerprint: list[float] | None = None
+    top_k: int | None = None
 
 
 class Attributes(BaseModel):
@@ -32,7 +32,7 @@ class Candidate(BaseModel):
     camera_id: str
     timestamp: str
     attributes: Attributes
-    suggested_plate: Optional[SuggestedPlate] = None
+    suggested_plate: SuggestedPlate | None = None
 
 
 class SearchResponse(BaseModel):
@@ -42,7 +42,7 @@ class SearchResponse(BaseModel):
 @router.post("/search", response_model=SearchResponse)
 async def search(
     query: Annotated[SearchQuery, Form()],
-    image: Annotated[Optional[UploadFile], File()] = None,
+    image: Annotated[UploadFile | None, File()] = None,
 ):
     return SearchResponse(
         candidates=[

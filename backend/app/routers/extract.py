@@ -1,4 +1,4 @@
-from typing import Annotated, Optional
+from typing import Annotated
 
 from fastapi import APIRouter, File, Form, UploadFile
 from pydantic import BaseModel
@@ -7,10 +7,10 @@ router = APIRouter(tags=["extract"])
 
 
 class ExtractMeta(BaseModel):
-    camera_id: Optional[str] = None
-    timestamp: Optional[str] = None
-    plate_number: Optional[str] = None
-    plate_confidence: Optional[float] = None
+    camera_id: str | None = None
+    timestamp: str | None = None
+    plate_number: str | None = None
+    plate_confidence: float | None = None
 
 
 class Attributes(BaseModel):
@@ -20,9 +20,9 @@ class Attributes(BaseModel):
 
 
 class Plate(BaseModel):
-    text: Optional[str] = None
-    confidence: Optional[float] = None
-    source: Optional[str] = None
+    text: str | None = None
+    confidence: float | None = None
+    source: str | None = None
 
 
 class Detection(BaseModel):
