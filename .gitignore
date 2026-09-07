@@ -21,6 +21,9 @@ data/weights/*
 !data/raw/.gitkeep
 !data/weights/.gitkeep
 
+# Logs
+*.log
+
 # Env
 .env
 .env.local
