@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 from ultralytics import YOLO
+from ultralytics.engine.results import Results
 
 # COCO class ids for the vehicle types we care about (car, bus, truck).
 VEHICLE_CLASS_IDS = {2, 5, 7}
@@ -29,9 +30,10 @@ class VehicleDetector:
         self.device = device
 
     def detect(self, image: np.ndarray) -> list[Detection]:
-        results = self.model.predict(image, conf=self.conf, device=self.device, verbose=False)[0]
+        results = next(iter(self.model.predict(image, conf=self.conf, device=self.device, verbose=False)))
+        assert isinstance(results, Results)
         detections = []
-        for box in results.boxes:
+        for box in results.boxes or []:
             class_id = int(box.cls.item())
             if class_id not in VEHICLE_CLASS_IDS:
                 continue

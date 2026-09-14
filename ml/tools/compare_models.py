@@ -23,7 +23,7 @@ import cv2
 from ultralytics import YOLO
 
 from detection.detector import WEIGHTS_DIR
-from playground import predict, window_title
+from tools.playground import predict, window_title
 
 LOG_PATH = Path(__file__).resolve().parent.parent / "detection.log"
 
@@ -55,7 +55,8 @@ def main(image_path: str, weights_names: list[str]) -> None:
         results = predict(model, frame)
 
         detections = ", ".join(
-            f"{results.names[int(box.cls.item())]} {float(box.conf.item()) * 100:.2f}%" for box in results.boxes
+            f"{results.names[int(box.cls.item())]} {float(box.conf.item()) * 100:.2f}%"
+            for box in results.boxes or []
         ) or "no detections"
         speed = results.speed
         logger.info(

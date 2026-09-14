@@ -27,17 +27,21 @@ WINDOW_NAME = "Vehicle detector (q or Esc to quit)"
 
 
 def predict(model: YOLO, frame) -> Results:
-    return model.predict(frame, conf=0.25, classes=list(VEHICLE_CLASS_IDS), verbose=False)[0]
+    results = next(iter(model.predict(frame, conf=0.25, classes=list(VEHICLE_CLASS_IDS), verbose=False)))
+    assert isinstance(results, Results)
+    return results
 
 
 def window_title(results: Results) -> str:
     inference_ms = results.speed["inference"]
-    if len(results.boxes) == 0:
+    boxes = results.boxes
+    if boxes is None or len(boxes) == 0:
         return f"No vehicle | {inference_ms:.0f} ms"
 
-    best = max(results.boxes, key=lambda b: float(b.conf.item()))
-    class_name = results.names[int(best.cls.item())]
-    confidence = float(best.conf.item()) * 100
+    confidences = boxes.conf.tolist()
+    best_idx = confidences.index(max(confidences))
+    class_name = results.names[int(boxes.cls[best_idx])]
+    confidence = confidences[best_idx] * 100
     return f"{confidence:.0f}% {class_name} | {inference_ms:.0f} ms"
 
 

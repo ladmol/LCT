@@ -21,9 +21,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import cv2
 from ultralytics import YOLO
 
-from compare_models import logger
 from detection.detector import WEIGHTS_DIR
-from playground import predict
+from tools.compare_models import logger
+from tools.playground import predict
 
 
 def benchmark(image_dir: Path, weights_names: list[str]) -> None:
@@ -44,7 +44,7 @@ def benchmark(image_dir: Path, weights_names: list[str]) -> None:
             results = predict(model, frame)
             detections = ", ".join(
                 f"{results.names[int(box.cls.item())]} {float(box.conf.item()) * 100:.2f}%"
-                for box in results.boxes
+                for box in results.boxes or []
             ) or "no detections"
             speed = results.speed
             logger.info(
