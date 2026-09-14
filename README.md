@@ -31,6 +31,10 @@
 - `data/` — датасеты и веса моделей (в git не попадают, см. `.gitignore`)
 - `docker-compose.yml` — Qdrant + PostgreSQL для локальной разработки
 
+## Датасеты
+
+- **CityFlowV2-ReID** (`data/raw/cityflow/`) — 85 058 фото, 880 identity автомобилей (440 train / 440 test), 46 камер реального городского трафика. Используется как рабочий Re-ID датасет (официальный VeRi-776 доступен только по запросу на почту, поэтому стартуем отсюда). Источник: [AI City Challenge 2021, Track 2 — City-Scale Multi-Camera Vehicle Re-Identification](http://www.aicitychallenge.org/2021-track2-download/) (официальный сайт: [aicitychallenge.org](https://www.aicitychallenge.org/)).
+
 ## Команда и роли
 
 Команда из двух разработчиков, работающих параллельными треками: **Инженер A — ML/Data** и **Инженер B — Backend/Infra/Frontend**, с точками синхронизации между ними. Таймлайн (Gantt) и распределение задач — в [docs/dev-plan.md](docs/dev-plan.md#2-таймлайн-параллельной-работы).
