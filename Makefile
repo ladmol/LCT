@@ -5,7 +5,7 @@ help:
 	@echo "backend-prod  - run backend in production mode (fastapi run)"
 	@echo "lint          - ruff check on backend/ and ml/"
 	@echo "lint-fix      - ruff check and fix on backend/ and ml/"
-	@echo "typecheck     - ty + pyrefly on backend/ and ml/"
+	@echo "typecheck     - pyrefly on backend/ and ml/"
 	@echo "check         - lint + typecheck"
 
 backend-dev:
