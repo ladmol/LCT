@@ -21,6 +21,9 @@ data/weights/*
 !data/raw/.gitkeep
 !data/weights/.gitkeep
 
+# Dataset images from the hackathon spec archive (large, not for git)
+data/specs/images/
+
 # Logs
 *.log
 
