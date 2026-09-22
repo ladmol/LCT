@@ -324,7 +324,7 @@ services/
   inference/             # сервер эмбеддингов (TensorRT, nvJPEG); зависит от reid
   api/                   # FastAPI + pgvector; НЕ зависит от reid и torch
 frontend/                # pnpm-проект, SPA
-weights/                 # итоговые ONNX + калибраторы (JSON) + SHA256SUMS
+weights/                 # итоговые ONNX + safetensors (fallback) + калибраторы (JSON) + SHA256SUMS; шарды < 100 МБ
 docker/                  # Dockerfile'ы, entrypoint сборки TensorRT-engine
 data/specs/              # данные организаторов (images/ — локально, в git не хранятся)
 data/raw/, data/weights/ # внешние датасеты и промежуточные веса — локально, в git не хранятся
@@ -333,7 +333,7 @@ docker-compose.yml       # db, inference, api, frontend; профили predict/
 Readme.md
 ```
 
-Итоговые веса лежат в репозитории и попадают в образ при сборке, а не скачиваются при запуске (ТЗ §8: работа без интернета). Малая модель в FP16 ONNX меньше 100 МБ и коммитится напрямую, большая — через Git LFS. При старте сверяется `SHA256SUMS`.
+Итоговые веса лежат в репозитории и попадают в образ при сборке, а не скачиваются при запуске (ТЗ §8: работа без интернета). Всё коммитится напрямую, без Git LFS (квота трафика LFS не переживёт клоны жюри): файлы больше 100 МБ шардируются — ONNX через external data, safetensors на части. При старте сверяется `SHA256SUMS`.
 
 ## 10. Открытые вопросы к организаторам
 
