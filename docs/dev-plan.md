@@ -45,7 +45,7 @@
 
 **Артефакты (ТЗ §8, README датасета)**
 - [ ] `submission.csv`: `query_id, gallery_id_1..10`, одна строка на каждую строку `test_query.csv`.
-- [ ] `embeddings.npy`: `float32 [1110 + 750, D]`, сначала query, затем gallery, в порядке файлов.
+- [ ] `embeddings.npy`: `float32 [N_query + N_gallery, D]` (на публичной части 1110 + 750), сначала query, затем gallery, в порядке файлов.
 - [ ] `candidates.csv`: `query_id, gallery_id, confidence`; запросы с отказом не дают строк.
 - [ ] `predict` запускается одной командой в изолированном окружении без сети и принимает пути к произвольным CSV (закрытая часть теста).
 
