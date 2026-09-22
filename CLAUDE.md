@@ -60,7 +60,8 @@ The embedding is always **512-d, L2-normalized**, via a projection head, whateve
   - stream ingestion.
 - **Don't reconstruct hidden info from pixels** (e.g. pseudo-camera from background) without explicit organizer approval. It's listed as a gray zone in `docs/architecture.md` §10.
 - **No training from scratch.** Start from public, ungated, MIT/Apache-licensed pretrained weights via timm (CLIP ViT-B/16, SigLIP 2, DINOv2 ViT-S, ConvNeXt-T, R50-IBN) and fine-tune. Every external weight and dataset, with version and licence, goes into `README.md`.
-- **No DINOv3 and no request-access datasets** (VeRi-776, VERI-Wild, VehicleID, CityFlow, or checkpoints trained on them) until the organizers approve; the baseline must not depend on them.
+- **No DINOv3** — team decision (licence: gated download + trade-controls clause).
+- **No request-access datasets** (VeRi-776, VERI-Wild, VehicleID, CityFlow, or checkpoints trained on them) until the organizers approve; the baseline must not depend on them.
 - **Functional preprocessing parity.** Crop/pad/resize/normalize code is shared from `reid_core` everywhere. JPEG decoders legitimately differ (crop cache in training, nvJPEG in inference), so validation metrics must come only from the real `predict` → `evaluate.py` path, and a test keeps `/v1/embed` and `predict` embeddings at cosine ≥ 0.999.
 - **Speed claims are measured.** `benchmark` must time exactly the shipped config (precision, TTA flag) in both modes: crop → vector and JPEG + bbox → vector.
 - **Refusal threshold τ** is chosen on the open-set validation split with distractor queries and shipped as an artifact next to the weights. It is never fitted on test.
