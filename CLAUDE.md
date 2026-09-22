@@ -10,7 +10,7 @@ Docs-only for now. The repo holds the organizers' spec (`docs/task.md`, `docs/ta
 
 ЛЦТ 2026, task «Фалькон Тех»: open-set vehicle re-identification **without the license plate**. For each query crop (image + given bbox), rank the gallery by likelihood of being the same vehicle, and refuse when there's no confident match. Test vehicles never appear in train.
 
-Scoring (`docs/task.md` §9): mAP cross-camera only (45%), speed at batch=1 and batched FPS plus weights ≤ 2 GB (20%), engineering/Docker/docs (15%), refusal F1/TNR (10%), defense (10%). UI, Grad-CAM and 10⁶-scale ANN are tie-breakers only (0 points).
+Scoring (`docs/task.md` §9): mAP@10 from `submission.csv`, cross-camera only (45%), speed at batch=1 and batched FPS plus weights ≤ 2 GB (20%), engineering/Docker/docs (15%), refusal F1/TNR (10%), defense (10%). UI, Grad-CAM and 10⁶-scale ANN are tie-breakers only (0 points).
 
 ## Data (`data/specs/`)
 
@@ -22,9 +22,17 @@ Scoring (`docs/task.md` §9): mAP cross-camera only (45%), speed at batch=1 and 
 
 ## Submission artifacts (`data/specs/README.md`)
 
-- `submission.csv`: `query_id, gallery_id_1..gallery_id_10`.
+- `submission.csv` (no header): `query_id, gallery_id_1..gallery_id_10`.
 - `embeddings.npy`: all query rows (file order), then all gallery rows.
-- `candidates.csv`: `query_id, gallery_id, confidence`; refused queries have no rows.
+- `candidates.csv` (with header): `query_id, gallery_id, confidence`; refused queries have no rows.
+
+Scoring is done by the organizers' reference script `data/specs/evaluate.py` (protocol summarized in `docs/architecture.md` §4.8):
+
+- mAP@10 from `submission.csv`: same-ID-same-camera junk is stripped from our list before truncating to 10; queries with no match are excluded from mAP.
+- Refusal is judged per query, by the top-confidence candidate only.
+- `embeddings.npy` metrics are reference-only (plain cosine).
+
+Don't reimplement these metrics. Validation must emit ground truth in the organizers' format (`image_id, vehicle_id, camera_id, split`) and call that script. Don't edit `data/specs/`: it holds the organizers' inputs verbatim.
 
 Organizers run our `predict` container themselves on a **hidden** test split, offline. It must take arbitrary CSV/image paths and bundle all weights.
 
