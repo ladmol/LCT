@@ -4,55 +4,62 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-The repo has a scaffold (`backend/`, `ml/`, `frontend/` — see below) but no real implementation yet: modules under `backend/app/` and `ml/` are empty placeholder files. Fill them in per the phases in `docs/dev-plan.md`; there's no lint/test config set up yet, so add it (e.g. `pytest`, `ruff`) as part of Segment 1/2 rather than assuming it already exists.
-
-## Commands
-
-- `backend/`, `ml/` — Python via [uv](https://github.com/astral-sh/uv), pinned to **3.13** (`.python-version`; capped at `<3.14` because PaddlePaddle/PaddleOCR has no `cp314` wheels yet — see `docs/tech-stack.md`). Setup: `cd backend && uv sync` / `cd ml && uv sync`. Run a script: `uv run <file>.py`.
-- `frontend/` — React + TS via [pnpm](https://pnpm.io/). Setup: `cd frontend && pnpm install`. Dev server: `pnpm dev`. Build: `pnpm build`.
-- `docker compose up` (repo root) — starts Qdrant + PostgreSQL for local development, per `docker-compose.yml` / `.env.example`.
+Docs-only for now. The repo holds the organizers' spec (`docs/task.md`, `docs/task.pdf`), their dataset annotations (`data/specs/`), and the design (`docs/architecture.md`, `docs/dev-plan.md`). No code yet — build it per the phases in `docs/dev-plan.md`, using the target layout in `docs/architecture.md` §9. There's no lint/test config yet; add it (`ruff`, `pytest`) in phase 0 rather than assuming it exists.
 
 ## What this project is
 
-Vehicle Re-Identification (Re-ID) service for the ЛЦТ 2026 hackathon (Falcon Tech task): builds a visual "fingerprint" of a vehicle (body type, color, damage, stickers, wheels, tint, etc.) that does **not** rely on the license plate, so the same vehicle can be matched across cameras/angles/lighting even when the plate is unreadable. When a plate was read for at least one event in a matched cluster, the service proposes it as the likely plate for the other events in that cluster.
+ЛЦТ 2026, task «Фалькон Тех»: open-set vehicle re-identification **without the license plate**. For each query crop (image + given bbox), rank the gallery by likelihood of being the same vehicle, and refuse when there's no confident match. Test vehicles never appear in train.
 
-## Documentation map
+Scoring (`docs/task.md` §9): mAP cross-camera only (45%), speed at batch=1 and batched FPS plus weights ≤ 2 GB (20%), engineering/Docker/docs (15%), refusal F1/TNR (10%), defense (10%). UI, Grad-CAM and 10⁶-scale ANN are tie-breakers only (0 points).
 
-The design lives in three docs that together define the system — they cross-reference each other, so read all three before writing code:
+## Data (`data/specs/`)
 
-- `docs/architecture.md` — pipeline components, data-flow diagram (Mermaid), matching logic, fingerprint vector format, and the DB schema split (vector DB fields vs. relational metadata fields).
-- `docs/tech-stack.md` — chosen technology per component, GPU/CPU requirements for training vs. inference, per-stage latency budget.
-- `docs/dev-plan.md` — build plan for a 2-person team (Track A: ML/Data, Track B: Backend/Infra/Frontend) working in parallel, with 4 sync points (m1–m4) where the API/embedding contract is fixed. Don't change the embedding format or API contract shape outside those sync points without checking both `architecture.md` and `tech-stack.md`.
+- `train.csv`: `image_id, x, y, w, h, vehicle_id, camera_id` — 9 556 rows, 1 541 IDs, 96 cameras.
+- `test_query.csv` (1 110) and `test_gallery.csv` (750): `image_id, x, y, w, h`. `image_id` is the query/gallery identifier.
+- One vehicle per frame.
+- `images/` (~7 GB JPEG) is gitignored and must be unpacked locally.
+- `camera_id` exists only in train. Use it for cross-camera validation and sampling, never as an inference input.
+
+## Submission artifacts (`data/specs/README.md`)
+
+- `submission.csv`: `query_id, gallery_id_1..gallery_id_10`.
+- `embeddings.npy`: all query rows (file order), then all gallery rows.
+- `candidates.csv`: `query_id, gallery_id, confidence`; refused queries have no rows.
+
+Organizers run our `predict` container themselves on a **hidden** test split, offline. It must take arbitrary CSV/image paths and bundle all weights.
 
 ## Architecture at a glance
 
-Ingestion is **push, not stream**: cameras sit behind existing ПАК (recognition units) that already detect/crop the vehicle and often already OCR the plate themselves. This service never pulls RTSP/video — it only receives already-cropped-or-croppable frames over HTTP. Shared feature-extraction pipeline used by both endpoints below:
+See `docs/architecture.md`. One shared `reid_core` package (preprocess → embed → rank/re-rank → calibrate) is used by:
 
-**Our own plate OCR is out of hackathon scope, deferred to later.** The hackathon goal is the visual fingerprint/matching, not ANPR. In the core build, `plate_number` only ever arrives via the camera/ПАК (already read by it) or manual entry through `/register_plate` — `ml/ocr/plate_ocr.py` stays an empty placeholder for now. The plate-suggestion feature (propagate `plate_number` across a `cluster_id`) is still fully in scope; it just doesn't care where the plate came from.
+- training scripts;
+- the offline `predict` CLI/container that writes the three artifacts, with no DB and no network;
+- the services, via docker compose:
+  - `inference` — ONNX Runtime / TensorRT FP16, stateless image + bbox → vector;
+  - `api` — FastAPI, OpenAPI, orchestrates search + refusal, no torch;
+  - `db` — PostgreSQL + pgvector: gallery vectors + metadata;
+  - `frontend` — React + TS SPA behind nginx.
 
-```
-Frame -> YOLOv8 detector -> crop/preprocess (OpenCV)
-      -> Re-ID embedder (FastReID: OSNet/ResNet50, optionally TransReID)
-         + attribute heads (color/body type/viewpoint)
-      -> fused fingerprint vector (fixed-dim, L2-normalized)
-```
+## Key constraints to preserve
 
-- `POST /extract` — the camera/ПАК push endpoint. Runs the pipeline above, **saves** the event to the Vector DB + relational metadata (Postgres/SQLite), then auto-searches history (ANN -> spatio-temporal/attribute prefilter -> k-reciprocal re-ranking) to assign an existing `cluster_id` or create a new one. This is also how the hackathon demo populates its "history" — `ml/scripts/populate_vector_db.py` loops over a gallery dataset calling this same endpoint, simulating camera events, rather than writing to the DBs directly.
-- `POST /search` — the operator-facing, **read-only** endpoint (demo UI). Runs the same pipeline + matching logic, but never writes; returns ranked candidates, with a plate suggestion pulled from the matched cluster if any member of it has one.
-- `POST /register_plate` — operator manually attaches/confirms a plate for a `cluster_id`.
+- **Out of scope per spec:**
+  - vehicle detection (bbox is given);
+  - plate OCR or any plate-derived feature (disqualification);
+  - tracking;
+  - spatio-temporal filtering (no camera/time at test);
+  - stream ingestion.
+- **Don't reconstruct hidden info from pixels** (e.g. pseudo-camera from background) without explicit organizer approval. It's listed as a gray zone in `docs/architecture.md` §10.
+- **No training from scratch.** Start from public pretrained weights (e.g. CLIP-ReID ViT-B/16, ResNet50-IBN) and fine-tune. Every external weight and dataset, with version, goes into `README.md`.
+- **One preprocessing path.** Train, `predict` and `inference` must share `reid_core` preprocessing; divergence is a bug.
+- **Refusal threshold τ** is chosen on the open-set validation split with distractor queries and shipped as an artifact next to the weights. It is never fitted on test.
+- **Don't change the embedding format or API contract** outside the sync points (m1–m4) in `docs/dev-plan.md`.
 
-Full request/response shapes are in `docs/architecture.md` §3.8 (agreed at sync point m1 — see `docs/dev-plan.md`; only the fingerprint dimension is still open, pinned at m2).
+## Tooling
 
-ML pipeline and backend are Python (package management via `uv`, one project each in `backend/` and `ml/` — kept separate so backend installs don't pull in heavy ML deps like torch). Demo UI is a React + TypeScript SPA (Vite, package management via `pnpm`, in `frontend/`) calling the backend API directly.
+- Python via [uv](https://github.com/astral-sh/uv) (`uv sync`, `uv run`).
+- Frontend via [pnpm](https://pnpm.io/).
+- Everything runs in Docker for the submission (`docker compose up`).
 
 ## Working conventions
 
-- **Never install tools or dependencies without asking first.** Don't run `uv add`, `uv add --dev`, `pnpm add`, `pip install`, or any other package-manager install/upgrade/remove command yourself. Instead, propose the exact command and wait for explicit approval before it gets run. This applies in `backend/`, `ml/`, and `frontend/` alike. Read-only commands (`uv sync`, `uv run`, `pnpm install` to sync the existing lockfile, `pnpm dev`, `pnpm build`) are fine without asking.
-
-## Key constraints to preserve when implementing
-
-- **`/extract` writes, `/search` doesn't.** Don't make `/extract` stateless (it must persist + auto-cluster) and don't make `/search` persist anything (it's a read-only lookup for the operator). Don't build live RTSP/video-stream ingestion — events arrive as discrete HTTP pushes from the camera/ПАК, per the diagram in `docs/architecture.md` §2.
-- **No training from scratch.** Detector (YOLOv8) is used pretrained, as-is. The Re-ID model starts from FastReID/torchreid pretrained weights (VeRi-776/VehicleID) and is fine-tuned — never trained from zero.
-- **Don't implement plate OCR as part of the core build.** It's deferred (see above) — don't add EasyOCR/PaddleOCR calls into `/extract` unless the user explicitly asks to pick that work back up.
-- **Vector DB vs. relational DB split.** The vector index stores only `fingerprint_id` + `vector`. Everything descriptive (`camera_id`, `timestamp`, `bbox`, `track_id`, `plate_number`, `plate_confidence`, `color`, `body_type`, `viewpoint`, `cluster_id`) lives in the relational DB, joined by `fingerprint_id`. Don't push metadata fields into the vector store or vice versa (`docs/architecture.md` §5).
-- **`cluster_id` -> `plate_number` is the core mechanism** for the "suggest a plate for unreadable events" feature: if any event in a cluster has a recognized plate, it's proposed for the rest of the cluster. Any matching/clustering logic must populate `cluster_id` consistently for this to work.
+- **Never install tools or dependencies without asking first.** Don't run `uv add`, `uv add --dev`, `pnpm add`, `pip install`, or any other package-manager install/upgrade/remove command yourself. Propose the exact command and wait for explicit approval. Read-only or lockfile-sync commands (`uv sync`, `uv run`, `pnpm install` against an existing lockfile, `pnpm dev`, `pnpm build`) are fine.
