@@ -27,6 +27,7 @@
 | [data/specs/README.md](data/specs/README.md) | README датасета от организаторов: состав файлов и форматы сдачи |
 | [data/specs/evaluate.py](data/specs/evaluate.py) | Эталонный скрипт метрик от организаторов (mAP@10, Rank-1/5, mINP, F1/TNR/PR-AUC) |
 | [docs/architecture.md](docs/architecture.md) | Архитектура: компоненты, `predict`, API, схема БД, ML-подход, режим отказа, стек, открытые вопросы |
+| [docs/tech-stack.md](docs/tech-stack.md) | Технологии и версии: модели и лицензии, обучение, TensorRT-инференс, GPU-декодирование, сервисы, CUDA, CI |
 | [docs/dev-plan.md](docs/dev-plan.md) | План по фазам для двух треков, точки синхронизации, чек-лист сдачи, риски |
 
 ## Данные
