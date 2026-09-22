@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-Docs-only for now. The repo holds the organizers' spec (`docs/task.md`, `docs/task.pdf`), their dataset annotations (`data/specs/`), and the design (`docs/architecture.md`, `docs/dev-plan.md`). No code yet — build it per the phases in `docs/dev-plan.md`, using the target layout in `docs/architecture.md` §9. There's no lint/test config yet; add it (`ruff`, `pytest`) in phase 0 rather than assuming it exists.
+Docs-only for now. The repo holds the organizers' spec (`docs/task.md`, `docs/task.pdf`), their dataset annotations (`data/specs/`), and the design (`docs/architecture.md`, `docs/tech-stack.md`, `docs/dev-plan.md`). No code yet — build it per the phases in `docs/dev-plan.md`, using the target layout in `docs/architecture.md` §9. There's no lint/test config yet; add it (`ruff`, `pytest`) in phase 0 rather than assuming it exists.
 
 ## What this project is
 
@@ -38,15 +38,17 @@ Organizers run our `predict` container themselves on a **hidden** test split, of
 
 ## Architecture at a glance
 
-See `docs/architecture.md`. One shared `reid_core` package (preprocess → embed → rank/re-rank → calibrate) is used by:
+See `docs/architecture.md` (what) and `docs/tech-stack.md` (how, with versions). One shared `reid_core` package (preprocess → embed → rank/re-rank → calibrate) is used by:
 
 - training scripts;
 - the offline `predict` CLI/container that writes the three artifacts, with no DB and no network;
 - the services, via docker compose:
-  - `inference` — ONNX Runtime / TensorRT FP16, stateless image + bbox → vector;
-  - `api` — FastAPI, OpenAPI, orchestrates search + refusal, no torch;
-  - `db` — PostgreSQL + pgvector: gallery vectors + metadata;
-  - `frontend` — React + TS SPA behind nginx.
+  - `inference` — FastAPI under Granian; nvImageCodec GPU JPEG decode → TensorRT FP16 engine built from ONNX on the target GPU at first start (ONNX Runtime fallback); stateless JPEG + bbox → vector;
+  - `api` — FastAPI under Granian, OpenAPI, orchestrates search + online re-ranking + refusal; no torch, doesn't depend on `reid`;
+  - `db` — PostgreSQL 18 + pgvector 0.8: `halfvec(512)` + metadata;
+  - `frontend` — React 19 + Vite 8 SPA behind nginx.
+
+The embedding is always **512-d, L2-normalized**, via a projection head, whatever the backbone. Which model ships (big CLIP ViT-B/16 vs a small one) is decided by measurement against a 5% relative mAP@10 budget (`docs/tech-stack.md` §2.3), not up front.
 
 ## Key constraints to preserve
 
@@ -57,16 +59,19 @@ See `docs/architecture.md`. One shared `reid_core` package (preprocess → embed
   - spatio-temporal filtering (no camera/time at test);
   - stream ingestion.
 - **Don't reconstruct hidden info from pixels** (e.g. pseudo-camera from background) without explicit organizer approval. It's listed as a gray zone in `docs/architecture.md` §10.
-- **No training from scratch.** Start from public pretrained weights (e.g. CLIP-ReID ViT-B/16, ResNet50-IBN) and fine-tune. Every external weight and dataset, with version, goes into `README.md`.
-- **One preprocessing path.** Train, `predict` and `inference` must share `reid_core` preprocessing; divergence is a bug.
+- **No training from scratch.** Start from public, ungated, MIT/Apache-licensed pretrained weights via timm (CLIP ViT-B/16, SigLIP 2, DINOv2 ViT-S, ConvNeXt-T, R50-IBN) and fine-tune. Every external weight and dataset, with version and licence, goes into `README.md`.
+- **No DINOv3 and no request-access datasets** (VeRi-776, VERI-Wild, VehicleID, CityFlow, or checkpoints trained on them) until the organizers approve; the baseline must not depend on them.
+- **Functional preprocessing parity.** Crop/pad/resize/normalize code is shared from `reid_core` everywhere. JPEG decoders legitimately differ (crop cache in training, nvJPEG in inference), so validation metrics must come only from the real `predict` → `evaluate.py` path, and a test keeps `/v1/embed` and `predict` embeddings at cosine ≥ 0.999.
+- **Speed claims are measured.** `benchmark` must time exactly the shipped config (precision, TTA flag) in both modes: crop → vector and JPEG + bbox → vector.
 - **Refusal threshold τ** is chosen on the open-set validation split with distractor queries and shipped as an artifact next to the weights. It is never fitted on test.
 - **Don't change the embedding format or API contract** outside the sync points (m1–m4) in `docs/dev-plan.md`.
 
 ## Tooling
 
-- Python via [uv](https://github.com/astral-sh/uv) (`uv sync`, `uv run`).
+- **Python 3.13** everywhere, one [uv](https://github.com/astral-sh/uv) workspace (`reid`, `services/*`) with a single `uv.lock`. Not 3.14: `faiss-gpu-cu12` needs `<3.14`.
 - Frontend via [pnpm](https://pnpm.io/).
-- Everything runs in Docker for the submission (`docker compose up`).
+- Everything runs in Docker for the submission (`docker compose up`). CUDA is a build arg (`CUDA_FLAVOR=cu126|cu130`). Don't use `torch-tensorrt`: go ONNX → TensorRT directly.
+- ruff (lint + format), pytest; `ty` is dev-only while it's beta.
 
 ## Working conventions
 
