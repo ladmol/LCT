@@ -25,6 +25,7 @@
 |---|---|
 | [docs/task.md](docs/task.md) / [docs/task.pdf](docs/task.pdf) | ТЗ организаторов (Markdown-копия / оригинал) |
 | [data/specs/README.md](data/specs/README.md) | README датасета от организаторов: состав файлов и форматы сдачи |
+| [data/specs/example_submission/](data/specs/example_submission/) | Пример файлов сдачи от организаторов (синтетический: 5 query, 8 gallery) |
 | [data/specs/evaluate.py](data/specs/evaluate.py) | Эталонный скрипт метрик от организаторов (mAP@10, Rank-1/5, mINP, F1/TNR/PR-AUC) |
 | [docs/architecture.md](docs/architecture.md) | Архитектура: компоненты, `predict`, API, схема БД, ML-подход, режим отказа, стек, открытые вопросы |
 | [docs/tech-stack.md](docs/tech-stack.md) | Технологии и версии: модели и лицензии, обучение, TensorRT-инференс, GPU-декодирование, сервисы, CUDA, CI |

@@ -44,7 +44,7 @@ See `docs/architecture.md` (what) and `docs/tech-stack.md` (how, with versions).
 - the offline `predict` CLI/container that writes the three artifacts, with no DB and no network;
 - the services, via docker compose:
   - `inference` — FastAPI under Granian; nvImageCodec GPU JPEG decode → TensorRT FP16 engine built from ONNX on the target GPU at first start (PyTorch FP16 fallback; not `onnxruntime-gpu`, whose PyPI wheel targets CUDA 13); stateless JPEG + bbox → vector;
-  - `api` — FastAPI under Granian, OpenAPI, orchestrates search + online re-ranking + refusal; no torch, doesn't depend on `reid`;
+  - `api` — FastAPI under Granian, OpenAPI, orchestrates search + per-query re-ranking + refusal; no torch, doesn't depend on `reid`;
   - `db` — PostgreSQL 18 + pgvector 0.8: `halfvec(512)` + metadata;
   - `frontend` — React 19 + Vite 8 SPA behind nginx.
 
@@ -64,6 +64,8 @@ The embedding is always **512-d, L2-normalized**, via a projection head, whateve
 - **No request-access datasets** (VeRi-776, VERI-Wild, VehicleID, CityFlow, or checkpoints trained on them) until the organizers approve; the baseline must not depend on them.
 - **Functional preprocessing parity.** Crop/pad/resize/normalize code is shared from `reid_core` everywhere. JPEG decoders legitimately differ (crop cache in training, nvJPEG in inference), so validation metrics must come only from the real `predict` → `evaluate.py` path, and a test keeps `/v1/embed` and `predict` embeddings at cosine ≥ 0.999.
 - **Speed claims are measured.** `benchmark` must time exactly the shipped config (precision, TTA flag) in both modes: crop → vector and JPEG + bbox → vector.
+- **Each query is processed independently** (organizers' rule, `docs/architecture.md` §4.10): no query expansion, no DBA over queries, no k-reciprocal over query ∪ gallery. Precomputed gallery ↔ gallery neighbors are allowed pending confirmation. `predict` and `api` run the same per-query postprocessing, so there is one calibrator.
+- **Never train on test images** (`test_query`/`test_gallery`), not even unlabeled pretraining or pseudo-labels.
 - **Refusal threshold τ** is chosen on the open-set validation split with distractor queries and shipped as an artifact next to the weights. It is never fitted on test.
 - **Don't change the embedding format or API contract** outside the sync points (m1–m4) in `docs/dev-plan.md`.
 
