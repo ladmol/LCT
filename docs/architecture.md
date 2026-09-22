@@ -59,7 +59,7 @@ flowchart LR
 
     TRAIN["training<br/>(train / eval / calibrate / export)"] -.uses.-> core
     PREDICT["predict (CLI, офлайн)<br/>query.csv + gallery.csv + images<br/>→ submission.csv, embeddings.npy, candidates.csv"] -.uses.-> core
-    INF["inference-svc<br/>ONNX Runtime / TensorRT FP16"] -.uses.-> PRE
+    INF["inference-svc<br/>TensorRT FP16 / PyTorch fallback"] -.uses.-> PRE
 
     USER((Оператор)) --> FE["frontend<br/>(nginx + SPA)"] --> API["api<br/>(FastAPI, OpenAPI)"]
     API -->|image + bbox| INF
@@ -74,7 +74,7 @@ flowchart LR
 
 - **Препроцессинг:** кроп по bbox с отступом (10%, клиппинг по границам кадра), resize (bilinear, antialias), нормализация — одни и те же torch-функции у всех потребителей. JPEG декодируется по-разному (при обучении — кэш кропов, в инференсе — nvJPEG на GPU), поэтому требуется не побайтное совпадение, а **функциональный паритет** (§4.9).
 - **Модель:** backbone и проекционная голова; на выходе L2-нормированный float32-вектор **D = 512** — для любого backbone (`tech-stack.md` §2.2).
-- **Runtime:** выполнение ONNX через TensorRT (engine собирается на целевом GPU) с fallback на ONNX Runtime; GPU-декодирование JPEG (`tech-stack.md` §4.2).
+- **Runtime:** выполнение ONNX через TensorRT (engine собирается на целевом GPU) с fallback на PyTorch FP16; GPU-декодирование JPEG (`tech-stack.md` §4.2).
 - **Retrieval:**
   - косинусное сходство (матричное умножение на GPU, точный перебор — тест небольшой);
   - k-reciprocal re-ranking;
@@ -120,7 +120,7 @@ docker compose run --rm predict \
 
 - Принимает JPEG и bbox, возвращает вектор. Не хранит состояния.
 - FastAPI под Granian, один процесс на GPU; asyncio micro-batcher собирает запросы в батчи.
-- Конвейер: nvImageCodec (nvJPEG) → torch-препроцессинг на GPU → TensorRT FP16 (батч 1 — через CUDA Graph). Fallback: PyTurboJPEG на CPU и ONNX Runtime.
+- Конвейер: nvImageCodec (nvJPEG) → torch-препроцессинг на GPU → TensorRT FP16 (батч 1 — через CUDA Graph). Fallback: PyTurboJPEG на CPU и PyTorch FP16.
 - **TensorRT-engine собирается из ONNX при первом старте** на GPU организаторов и кэшируется в volume: engine привязан к архитектуре GPU и версии TensorRT. Healthcheck ждёт окончания сборки.
 - Это и есть «backend инференса» из ТЗ §6: его удобно замерять отдельно. Для `/v1/explain` лениво загружается eager-модель PyTorch — вне горячего пути.
 
@@ -297,7 +297,7 @@ Ground truth организаторов: `image_id, vehicle_id, camera_id, split
 |---|---|
 | Язык | Python 3.13 везде, uv workspace |
 | Обучение | PyTorch 2.14, timm, bf16, `torch.compile` |
-| Инференс | ONNX → TensorRT 11 FP16 (engine на целевом GPU), fallback ONNX Runtime |
+| Инференс | ONNX → TensorRT 11 FP16 (engine на целевом GPU), fallback PyTorch FP16 |
 | Декодирование | nvImageCodec (nvJPEG), fallback PyTurboJPEG |
 | API и inference | FastAPI + Pydantic 2 под Granian |
 | Векторы и метаданные | PostgreSQL 18 + pgvector 0.8 (`halfvec`, HNSW) |

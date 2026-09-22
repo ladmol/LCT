@@ -43,7 +43,7 @@ See `docs/architecture.md` (what) and `docs/tech-stack.md` (how, with versions).
 - training scripts;
 - the offline `predict` CLI/container that writes the three artifacts, with no DB and no network;
 - the services, via docker compose:
-  - `inference` — FastAPI under Granian; nvImageCodec GPU JPEG decode → TensorRT FP16 engine built from ONNX on the target GPU at first start (ONNX Runtime fallback); stateless JPEG + bbox → vector;
+  - `inference` — FastAPI under Granian; nvImageCodec GPU JPEG decode → TensorRT FP16 engine built from ONNX on the target GPU at first start (PyTorch FP16 fallback; not `onnxruntime-gpu`, whose PyPI wheel targets CUDA 13); stateless JPEG + bbox → vector;
   - `api` — FastAPI under Granian, OpenAPI, orchestrates search + online re-ranking + refusal; no torch, doesn't depend on `reid`;
   - `db` — PostgreSQL 18 + pgvector 0.8: `halfvec(512)` + metadata;
   - `frontend` — React 19 + Vite 8 SPA behind nginx.

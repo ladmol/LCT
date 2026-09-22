@@ -19,7 +19,7 @@
 | Обучение | **PyTorch 2.14**, **timm 1.0.29**, bf16 AMP, `torch.compile` | Все backbone-кандидаты с открытыми весами доступны через timm |
 | Модель | Две модели одним кодом: **большая** (CLIP ViT-B/16) и **малая** (ViT-S / ConvNeXt-T / R50-IBN). Малую везём, если она укладывается в бюджет точности (§2.3) | Скорость — 20% оценки, точность — 45%: решаем замером, а не заранее |
 | Эмбеддинг | **D = 512**, L2-норма, хранение float16 | Проекционная голова: смена backbone не меняет контракт и схему БД |
-| Инференс | **ONNX → TensorRT 11.3 FP16**. Engine собирается на целевом GPU при первом старте. Fallback — **ONNX Runtime 1.30** CUDA EP | Максимум скорости без привязки к нашей видеокарте |
+| Инференс | **ONNX → TensorRT 11.3 FP16**. Engine собирается на целевом GPU при первом старте. Fallback — **PyTorch FP16** (веса в safetensors) | Максимум скорости без привязки к нашей видеокарте; fallback работает в обоих вариантах CUDA без дополнительных пакетов |
 | Декодирование | **nvImageCodec 0.9** (nvJPEG на GPU). Fallback — **PyTurboJPEG 2.5** с DCT-scaling ½ | При батче 1 декодирование кадра 1920×1080 сопоставимо по времени с моделью |
 | Поиск (офлайн) | torch-матрица сходства на GPU + k-reciprocal re-ranking | Тест маленький (1 110 × 750) — точный поиск за миллисекунды |
 | Отказ | Логистическая регрессия (**scikit-learn 1.9**) над признаками top-1; τ по F1 из `evaluate.py` | Прямо оптимизирует то, что считают организаторы |
@@ -160,16 +160,17 @@ backbone → pooling (CLS-токен для ViT / GeM для CNN)
 JPEG bytes + bbox
   → decode   nvImageCodec (nvJPEG; ROI = bbox+pad)      | fallback: PyTurboJPEG, DCT-scale ½ (CPU)
   → crop + resize (bilinear, antialias) + normalize — torch-операции на GPU
-  → TensorRT engine (FP16; батч 1 — через CUDA Graph)   | fallback: ONNX Runtime CUDA EP
+  → TensorRT engine (FP16; батч 1 — через CUDA Graph)   | fallback: PyTorch FP16 (safetensors)
   → L2-norm → float32[512]
 ```
 
-- **Экспорт:** `torch.onnx.export(..., dynamo=True)` → ONNX с динамической осью батча. Проверяем, что выходы ONNX совпадают с PyTorch (cosine > 0.9999).
+- **Экспорт:** `torch.onnx.export(..., dynamo=True)` → ONNX с динамической осью батча. Проверяем, что выходы ONNX совпадают с PyTorch (cosine > 0.9999) — через CPU-сборку `onnxruntime` в тестах.
 - **TensorRT engine собирается на целевом GPU при первом старте** контейнера из ONNX: engine привязан к архитектуре GPU и версии TensorRT, поэтому собрать заранее на нашей карте нельзя.
   - Профили оптимизации: batch 1 и 1–128.
   - Кэш лежит в volume, ключ — (GPU, версия TRT, хэш ONNX).
   - Сборка для ViT-B занимает минуты [оценка]. Healthcheck сервиса ждёт её окончания.
 - **Не используем `torch-tensorrt`:** версия 2.13 отстаёт от torch 2.14. Прямой путь ONNX → TensorRT надёжнее.
+- **Fallback — PyTorch, а не ONNX Runtime.** `onnxruntime-gpu` 1.30 с PyPI собран под CUDA 13 (extra `cuda` тянет `nvidia-cuda-runtime~=13.0`), поэтому в образе `cu126` он без отдельного фида Microsoft не работает. Torch уже есть в образе в обоих вариантах, так что fallback на нём не требует лишних зависимостей. Если сборка engine упала, модель запускается в FP16 из safetensors.
 - **FP8 / INT8** (NVIDIA ModelOpt 0.46, PTQ) — последний рычаг скорости. Включаем, только если mAP@10 падает не больше 0.5 п. и GPU организаторов поддерживает формат (FP8 — Ada/Hopper и новее).
 - **Батчинг:**
   - в `inference` — asyncio micro-batcher: собирает до 64 запросов или ждёт до 2 мс;
@@ -207,17 +208,17 @@ JPEG bytes + bbox
 ```
 pyproject.toml            # [tool.uv.workspace] members = ["reid", "services/*"]
 uv.lock                   # один lock на всё
-reid/                     # пакет reid_core: data, models, losses, retrieval, calibration, export, runtime (TRT/ORT)
+reid/                     # пакет reid_core: data, models, losses, retrieval, calibration, export, runtime (TRT + torch-fallback)
   configs/                # YAML-конфиги экспериментов
   scripts/                # train, eval, calibrate, export, predict, benchmark
-services/inference/       # зависит от reid (extras [runtime]: tensorrt, nvimgcodec, onnxruntime-gpu)
+services/inference/       # зависит от reid (extras [runtime]: tensorrt, nvimgcodec)
 services/api/             # НЕ зависит от reid: только numpy + веб-стек
 frontend/                 # pnpm
 weights/                  # итоговые ONNX + калибраторы (JSON) + SHA256SUMS
 docker/                   # Dockerfile'ы, entrypoint сборки engine
 ```
 
-- Extras пакета `reid`: `[train]` (timm, torchvision, sklearn), `[runtime]` (tensorrt, nvimgcodec, onnxruntime-gpu, pyturbojpeg).
+- Extras пакета `reid`: `[train]` (timm, torchvision, sklearn, onnxruntime CPU — для проверки экспорта), `[runtime]` (tensorrt, nvimgcodec, pyturbojpeg).
 - В каждом Dockerfile: `uv sync --frozen --no-dev --package <member> --extra …`.
 
 **Паритет препроцессинга.** Обучение читает кэш кропов (libjpeg-turbo → PNG), а инференс декодирует nvJPEG. Пиксели немного отличаются, это ожидаемо. Требование другое — **функциональный паритет**:
@@ -235,6 +236,12 @@ docker/                   # Dockerfile'ы, entrypoint сборки engine
   - `cu130`: torch 2.14+cu130, TensorRT cu13. Нужен драйвер R580+, поддерживает Blackwell.
 
   Выбираем, когда организаторы сообщат GPU и драйвер; до этого разрабатываем на `cu126`.
+
+  Оба набора проверены резолвом без установки (`uv pip compile`, linux x86_64, Python 3.13), 2026-09-22:
+  - `cu126`: torch 2.14.0+cu126, `tensorrt-cu12` 11.3.0.99, `nvidia-nvimgcodec-cu12` 0.9.0.20, cuDNN 9.10;
+  - `cu130`: torch 2.14.0+cu130, `tensorrt-cu13` 11.3.0.99, `nvidia-nvimgcodec-cu13` 0.9.0.20, cuDNN 9.24.
+
+  Совместимость в рантайме проверяется в фазе 0 при фиксации `uv.lock`.
 - **Веса:**
   - малая модель в FP16 ONNX весит < 100 МБ и коммитится прямо в git;
   - большая (~170 МБ FP16) — через Git LFS;
@@ -268,7 +275,7 @@ docker/                   # Dockerfile'ы, entrypoint сборки engine
 
 | Пакет | Версия | | Пакет | Версия |
 |---|---|---|---|---|
-| Python | 3.13 | | onnxruntime-gpu | 1.30.0 |
+| Python | 3.13 | | onnxruntime (CPU, только тесты) | 1.30.0 |
 | uv | 0.12.17 | | nvidia-modelopt | 0.46.1 |
 | torch / torchvision | 2.14.0 / 0.29.0 | | nvidia-nvimgcodec-cu12 | 0.9.0 |
 | timm | 1.0.29 | | pyturbojpeg | 2.5.0 |
