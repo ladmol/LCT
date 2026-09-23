@@ -15,11 +15,12 @@ dist/
 dist-ssr/
 *.local
 
-# Data & model weights (tracked as folders via .gitkeep, contents ignored)
-data/raw/*
-data/weights/*
-!data/raw/.gitkeep
-!data/weights/.gitkeep
+# Local data & model weights (external datasets, downloaded/trained weights)
+data/raw/
+data/weights/
+
+# Dataset images from the hackathon spec archive (large, not for git)
+data/specs/images/
 
 # Logs
 *.log

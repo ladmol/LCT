@@ -1,0 +1,5 @@
+q_a1b2c3d4,g_f6a7b8c9,g_a3b4c5d6,g_c9d0e1f2,g_b8c9d0e1,g_d0e1f2a3,g_a7b8c9d0,g_f2a3b4c5,g_e1f2a3b4
+q_b2c3d4e5,g_f6a7b8c9,g_b8c9d0e1,g_a7b8c9d0,g_a3b4c5d6,g_d0e1f2a3,g_e1f2a3b4,g_c9d0e1f2,g_f2a3b4c5
+q_c3d4e5f6,g_b8c9d0e1,g_a3b4c5d6,g_d0e1f2a3,g_f2a3b4c5,g_a7b8c9d0,g_c9d0e1f2,g_e1f2a3b4,g_f6a7b8c9
+q_d4e5f6a7,g_d0e1f2a3,g_f2a3b4c5,g_b8c9d0e1,g_c9d0e1f2,g_e1f2a3b4,g_a7b8c9d0,g_f6a7b8c9,g_a3b4c5d6
+q_e5f6a7b8,g_b8c9d0e1,g_e1f2a3b4,g_f2a3b4c5,g_a3b4c5d6,g_c9d0e1f2,g_d0e1f2a3,g_a7b8c9d0,g_f6a7b8c9
