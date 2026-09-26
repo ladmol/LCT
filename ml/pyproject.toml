@@ -1,17 +1,20 @@
 [project]
 name = "ml"
 version = "0.1.0"
-description = "Add your description here"
+description = "BBox-based vehicle Re-ID training, evaluation, and submission export"
 authors = [
     { name = "ladmol", email = "dima.ladmol@yandex.ru" }
 ]
 requires-python = ">=3.11,<3.14"
 dependencies = [
-    "opencv-python>=5.0.0.93",
-    "torch>=2.14.0",
-    "torchvision>=0.29.0",
-    "ultralytics>=8.4.143",
+    "numpy>=2.0,<3",
+    "pillow>=11,<13",
+    "torch==2.7.1",
+    "torchvision==0.22.1",
 ]
+
+[project.optional-dependencies]
+detection = ["opencv-python>=4.10", "ultralytics>=8.4"]
 
 [tool.pyrefly]
 project-includes = [
@@ -22,4 +25,9 @@ project-includes = [
 [dependency-groups]
 dev = [
     "pyrefly>=1.3.0",
+    "pytest>=8",
+    "ruff>=0.13",
 ]
+
+[tool.pytest.ini_options]
+addopts = "--basetemp=outputs/pytest_tmp_v2 -p no:cacheprovider"

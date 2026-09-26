@@ -1,0 +1,10 @@
+# Local datasets, checkpoints, generated submissions, and caches.
+data/*
+outputs/
+.uv-cache/
+.venv/
+!data/.gitkeep
+
+# Local-only source collection utilities.
+/scripts/collect_auto_ru.py
+/tools/probe_auto_ru.py
