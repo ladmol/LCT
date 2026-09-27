@@ -25,7 +25,9 @@ class VehicleReID(nn.Module):
             raise ValueError(f"Unsupported backbone: {arch}")
         if arch.startswith("resnet"):
             self.backbone.fc = nn.Identity()
-        self.classifier = nn.Linear(self.embedding_dim, num_classes) if num_classes else None
+        self.classifier = (
+            nn.Linear(self.embedding_dim, num_classes) if num_classes else None
+        )
         self.arch = arch
 
     def forward(self, images: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor | None]:
@@ -35,7 +37,9 @@ class VehicleReID(nn.Module):
         return embedding, logits
 
 
-def batch_hard_triplet(embedding: torch.Tensor, labels: torch.Tensor, margin: float = 0.3):
+def batch_hard_triplet(
+    embedding: torch.Tensor, labels: torch.Tensor, margin: float = 0.3
+):
     distances = torch.cdist(embedding.float(), embedding.float(), p=2)
     same = labels[:, None].eq(labels[None, :])
     eye = torch.eye(len(labels), dtype=torch.bool, device=labels.device)

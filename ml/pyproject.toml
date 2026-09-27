@@ -31,3 +31,5 @@ dev = [
 
 [tool.pytest.ini_options]
 addopts = "--basetemp=outputs/pytest_tmp_v2 -p no:cacheprovider"
+testpaths = ["tests"]
+pythonpath = ["."]

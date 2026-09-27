@@ -54,7 +54,9 @@ def crop_vehicle(image: Image.Image, bbox: tuple[int, int, int, int]) -> Image.I
     return image.convert("RGB").crop((left, top, right, bottom))
 
 
-def image_transform(image_size: int, *, training: bool = False, augmentation: str = "basic"):
+def image_transform(
+    image_size: int, *, training: bool = False, augmentation: str = "basic"
+):
     """Preserve aspect ratio, then use ImageNet normalization for the backbone."""
     if augmentation not in {"basic", "strong"}:
         raise ValueError(f"Unknown augmentation profile: {augmentation}")
@@ -72,14 +74,23 @@ def image_transform(image_size: int, *, training: bool = False, augmentation: st
                         fill=(124, 116, 104),
                     ),
                     transforms.RandomApply(
-                        [transforms.ColorJitter(brightness=0.35, contrast=0.35, saturation=0.25, hue=0.04)],
+                        [
+                            transforms.ColorJitter(
+                                brightness=0.35,
+                                contrast=0.35,
+                                saturation=0.25,
+                                hue=0.04,
+                            )
+                        ],
                         p=0.8,
                     ),
                     transforms.RandomGrayscale(p=0.05),
                 ]
             )
         else:
-            steps.append(transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.15))
+            steps.append(
+                transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.15)
+            )
     steps.extend(
         [
             transforms.ToTensor(),
@@ -87,7 +98,11 @@ def image_transform(image_size: int, *, training: bool = False, augmentation: st
         ]
     )
     if training and augmentation == "strong":
-        steps.append(transforms.RandomErasing(p=0.3, scale=(0.02, 0.14), ratio=(0.3, 3.3), value=0))
+        steps.append(
+            transforms.RandomErasing(
+                p=0.3, scale=(0.02, 0.14), ratio=(0.3, 3.3), value=0
+            )
+        )
     return transforms.Compose(steps)
 
 
@@ -100,7 +115,13 @@ class SquarePad:
             image, (self.image_size, self.image_size), method=Image.Resampling.BICUBIC
         )
         canvas = Image.new("RGB", (self.image_size, self.image_size), (124, 116, 104))
-        canvas.paste(fitted, ((self.image_size - fitted.width) // 2, (self.image_size - fitted.height) // 2))
+        canvas.paste(
+            fitted,
+            (
+                (self.image_size - fitted.width) // 2,
+                (self.image_size - fitted.height) // 2,
+            ),
+        )
         return canvas
 
 
@@ -117,7 +138,9 @@ class ContestDataset(Dataset):
     ):
         self.archive_path = str(archive)
         self.records = records
-        self.transform = image_transform(image_size, training=training, augmentation=augmentation)
+        self.transform = image_transform(
+            image_size, training=training, augmentation=augmentation
+        )
         self.label_to_index = label_to_index or {}
         self._archive: zipfile.ZipFile | None = None
 
@@ -133,7 +156,10 @@ class ContestDataset(Dataset):
         if self._archive is None:
             self._archive = zipfile.ZipFile(self.archive_path)
         record = self.records[index]
-        with self._archive.open(f"images/{record.image_id}.jpg") as raw, Image.open(raw) as image:
+        with (
+            self._archive.open(f"images/{record.image_id}.jpg") as raw,
+            Image.open(raw) as image,
+        ):
             crop = crop_vehicle(image, record.bbox)
             tensor = self.transform(crop)
         label = self.label_to_index.get(record.vehicle_id or "", -1)
@@ -143,9 +169,17 @@ class ContestDataset(Dataset):
 class IdentityBatchSampler(Sampler[list[int]]):
     """Sample P identities x K views, preferring different cameras for positives."""
 
-    def __init__(self, records: list[VehicleRecord], identities: int = 4, views: int = 4, seed: int = 42):
+    def __init__(
+        self,
+        records: list[VehicleRecord],
+        identities: int = 4,
+        views: int = 4,
+        seed: int = 42,
+    ):
         if identities < 2 or views < 2:
-            raise ValueError("Identity batches need at least two identities and two views")
+            raise ValueError(
+                "Identity batches need at least two identities and two views"
+            )
         self.groups: dict[str, list[int]] = {}
         for index, record in enumerate(records):
             if record.vehicle_id is None:
@@ -181,7 +215,9 @@ class IdentityBatchSampler(Sampler[list[int]]):
                         used_cameras.add(camera)
                     if len(chosen) == self.views:
                         break
-                chosen.extend(i for i in indices if i not in chosen)  # fill with other views
+                chosen.extend(
+                    i for i in indices if i not in chosen
+                )  # fill with other views
                 if len(chosen) < self.views:
                     chosen.extend(rng.choices(indices, k=self.views - len(chosen)))
                 batch.extend(chosen[: self.views])

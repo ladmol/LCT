@@ -25,13 +25,20 @@ def box_xyxy(box, size):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data", type=Path, default=Path("data/auto_ru"))
-    parser.add_argument("--reviews", type=Path, default=Path("data/auto_ru/reviews.jsonl"))
+    parser.add_argument(
+        "--reviews", type=Path, default=Path("data/auto_ru/reviews.jsonl")
+    )
     args = parser.parse_args()
     source = args.data / "manifest.jsonl"
     if not source.is_file() or not args.reviews.is_file():
         raise FileNotFoundError("Both manifest.jsonl and reviews.jsonl are required")
-    manifest = {row["image_path"]: row for row in map(json.loads, source.read_text(encoding="utf-8").splitlines())}
-    reviews = list(map(json.loads, args.reviews.read_text(encoding="utf-8").splitlines()))
+    manifest = {
+        row["image_path"]: row
+        for row in map(json.loads, source.read_text(encoding="utf-8").splitlines())
+    }
+    reviews = list(
+        map(json.loads, args.reviews.read_text(encoding="utf-8").splitlines())
+    )
     approved = []
     seen = set()
     for review in reviews:
@@ -40,8 +47,13 @@ def main():
         if review["image_path"] in seen:
             raise ValueError(f"Duplicate approved review: {review['image_path']}")
         seen.add(review["image_path"])
-        if review.get("plate_reviewed") is not True or review.get("face_reviewed") is not True:
-            raise ValueError(f"Explicit plate/face review missing: {review.get('image_path')}")
+        if (
+            review.get("plate_reviewed") is not True
+            or review.get("face_reviewed") is not True
+        ):
+            raise ValueError(
+                f"Explicit plate/face review missing: {review.get('image_path')}"
+            )
         row = manifest[review["image_path"]]
         restyling = review.get("restyling_label", row["restyling_label"])
         if restyling not in {"unknown", "pre-restyling", "restyling"}:
@@ -56,15 +68,21 @@ def main():
         for box in review.get("redactions", []):
             draw.rectangle(box_xyxy(box, image.size), fill=(0, 0, 0))
         cropped = image.crop(vehicle_box)
-        destination = args.data / "approved" / row["listing_id"] / Path(row["image_path"]).name
+        destination = (
+            args.data / "approved" / row["listing_id"] / Path(row["image_path"]).name
+        )
         if not destination.resolve().is_relative_to((args.data / "approved").resolve()):
-            raise ValueError(f"Approved destination is outside approved/: {destination}")
+            raise ValueError(
+                f"Approved destination is outside approved/: {destination}"
+            )
         destination.parent.mkdir(parents=True, exist_ok=True)
         cropped.save(destination, format="JPEG", quality=95)
         approved.append(
             {
                 "instance_id": row["listing_id"],
-                "image_path": str(destination.relative_to(args.data)).replace("\\", "/"),
+                "image_path": str(destination.relative_to(args.data)).replace(
+                    "\\", "/"
+                ),
                 "make": review.get("make", row["make"]).lower(),
                 "model": review.get("model", row["model"]).lower(),
                 "catalog_name": row["catalog_name"],
@@ -75,7 +93,10 @@ def main():
             }
         )
     output = args.data / "approved.jsonl"
-    output.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in approved), encoding="utf-8")
+    output.write_text(
+        "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in approved),
+        encoding="utf-8",
+    )
     print(f"Approved {len(approved)} photos; manifest={output}")
 
 

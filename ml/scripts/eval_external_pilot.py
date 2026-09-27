@@ -18,7 +18,9 @@ from reid.external import read_approved
 from reid.infer import load_model
 
 
-def leave_one_out_metrics(features: np.ndarray, identities: list[str]) -> dict[str, float]:
+def leave_one_out_metrics(
+    features: np.ndarray, identities: list[str]
+) -> dict[str, float]:
     if len(features) != len(identities):
         raise ValueError("Feature and identity lengths differ")
     scores = features @ features.T
@@ -43,7 +45,9 @@ def leave_one_out_metrics(features: np.ndarray, identities: list[str]) -> dict[s
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data", type=Path, default=Path("data/auto_ru"))
-    parser.add_argument("--checkpoint", type=Path, default=Path("outputs/baseline/best.pt"))
+    parser.add_argument(
+        "--checkpoint", type=Path, default=Path("outputs/baseline/best.pt")
+    )
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--batch-size", type=int, default=16)
     args = parser.parse_args()
@@ -64,8 +68,12 @@ def main():
     features = np.concatenate(vectors)
     identities = [record.instance_id for record in records]
     metrics = leave_one_out_metrics(features, identities)
-    print(f"photos={len(records)} ids={len(set(identities))} mAP={metrics['mAP']:.4f} rank1={metrics['rank1']:.4f}")
-    print("Local listing photos share backgrounds; use contest holdout for model selection.")
+    print(
+        f"photos={len(records)} ids={len(set(identities))} mAP={metrics['mAP']:.4f} rank1={metrics['rank1']:.4f}"
+    )
+    print(
+        "Local listing photos share backgrounds; use contest holdout for model selection."
+    )
 
 
 if __name__ == "__main__":

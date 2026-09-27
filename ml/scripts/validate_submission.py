@@ -22,9 +22,15 @@ def validate(archive: Path, output: Path) -> None:
     qids = [record.image_id for record in query]
     gids = [record.image_id for record in gallery]
     vectors = np.load(output / "embeddings.npy", allow_pickle=False)
-    if vectors.dtype != np.float32 or vectors.shape[0] != len(query) + len(gallery) or vectors.ndim != 2:
+    if (
+        vectors.dtype != np.float32
+        or vectors.shape[0] != len(query) + len(gallery)
+        or vectors.ndim != 2
+    ):
         raise ValueError("Embeddings must be float32 [query + gallery, dimension]")
-    if not np.isfinite(vectors).all() or not np.allclose(np.linalg.norm(vectors, axis=1), 1, atol=1e-3):
+    if not np.isfinite(vectors).all() or not np.allclose(
+        np.linalg.norm(vectors, axis=1), 1, atol=1e-3
+    ):
         raise ValueError("Embeddings must be finite and unit-normalized")
     ranking = rows(output / "submission.csv")
     if len(ranking) != len(query) or [row.get("query_id") for row in ranking] != qids:
@@ -65,13 +71,17 @@ def validate(archive: Path, output: Path) -> None:
             expected_confidence = float(np.clip((cosine + 1) / 2, 0, 1))
             if abs(confidence - expected_confidence) > 1e-5:
                 raise ValueError(f"Confidence disagrees with embeddings for {query_id}")
-    print(f"Validated {len(query)} queries, {len(gallery)} gallery images, {vectors.shape[1]} dimensions")
+    print(
+        f"Validated {len(query)} queries, {len(gallery)} gallery images, {vectors.shape[1]} dimensions"
+    )
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archive", type=Path, default=Path("data/dataset.zip"))
-    parser.add_argument("--output", type=Path, default=Path("outputs/submission_resnet50_256"))
+    parser.add_argument(
+        "--output", type=Path, default=Path("outputs/submission_convnext_tiny_256")
+    )
     args = parser.parse_args()
     validate(args.archive, args.output)
 

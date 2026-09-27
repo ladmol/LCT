@@ -33,7 +33,9 @@ def retrieval_metrics(
                 ],
                 dtype=int,
             )
-        matches = np.array([gallery_ids[j] == query_ids[index] for j in order], dtype=bool)
+        matches = np.array(
+            [gallery_ids[j] == query_ids[index] for j in order], dtype=bool
+        )
         if not matches.any():
             continue  # Unknown queries belong to refusal evaluation, not mAP.
         precision = np.cumsum(matches) / (np.arange(len(matches)) + 1)
@@ -68,7 +70,9 @@ def refusal_metrics(
     unknown = ~has_match
     return {
         "f1": 2 * tp / (2 * tp + fp + fn) if tp + fp + fn else 0.0,
-        "tnr": float((~accepted & unknown).sum() / unknown.sum()) if unknown.any() else 0.0,
+        "tnr": float((~accepted & unknown).sum() / unknown.sum())
+        if unknown.any()
+        else 0.0,
         "threshold": float(threshold),
         "known_queries": float(has_match.sum()),
         "unknown_queries": float(unknown.sum()),
@@ -86,7 +90,10 @@ def choose_refusal_threshold(
         raise ValueError(f"Unknown refusal objective: {objective}")
     scores = (query @ gallery.T).max(axis=1)
     boundaries = np.unique(np.r_[scores.min() - 1e-6, scores, scores.max() + 1e-6])
-    options = [refusal_metrics(query, gallery, query_ids, gallery_ids, value) for value in boundaries]
+    options = [
+        refusal_metrics(query, gallery, query_ids, gallery_ids, value)
+        for value in boundaries
+    ]
     if objective == "f1":
         return max(options, key=lambda item: (item["f1"], item["tnr"]))
     return max(

@@ -26,7 +26,9 @@ def embed_variants(model, archive, records, image_size, device, batch_size, work
         num_workers=workers,
         pin_memory=device.type == "cuda",
     )
-    output = {name: [] for name in ("base", "flip", "wide_multicrop", "flip_wide_multicrop")}
+    output = {
+        name: [] for name in ("base", "flip", "wide_multicrop", "flip_wide_multicrop")
+    }
     for images, _, indices in loader:
         images = images.to(device, non_blocking=True)
         with torch.autocast(device_type=device.type, enabled=device.type == "cuda"):
@@ -44,13 +46,27 @@ def embed_variants(model, archive, records, image_size, device, batch_size, work
                 selected = images[wide_positions]
                 width = selected.shape[3]
                 crop_width = round(width * 0.72)
-                left = F.interpolate(selected[:, :, :, :crop_width], size=(image_size, image_size), mode="bilinear")
-                right = F.interpolate(selected[:, :, :, -crop_width:], size=(image_size, image_size), mode="bilinear")
+                left = F.interpolate(
+                    selected[:, :, :, :crop_width],
+                    size=(image_size, image_size),
+                    mode="bilinear",
+                )
+                right = F.interpolate(
+                    selected[:, :, :, -crop_width:],
+                    size=(image_size, image_size),
+                    mode="bilinear",
+                )
                 left_vector, _ = model(left)
                 right_vector, _ = model(right)
-                wide_average[wide_positions] = F.normalize(base[wide_positions] + left_vector + right_vector, dim=1)
+                wide_average[wide_positions] = F.normalize(
+                    base[wide_positions] + left_vector + right_vector, dim=1
+                )
                 combined_average[wide_positions] = F.normalize(
-                    base[wide_positions] + flipped[wide_positions] + left_vector + right_vector, dim=1
+                    base[wide_positions]
+                    + flipped[wide_positions]
+                    + left_vector
+                    + right_vector,
+                    dim=1,
                 )
         for name, vectors in (
             ("base", base),
@@ -59,7 +75,9 @@ def embed_variants(model, archive, records, image_size, device, batch_size, work
             ("flip_wide_multicrop", combined_average),
         ):
             output[name].append(vectors.float().cpu().numpy())
-    return {name: np.concatenate(parts).astype(np.float32) for name, parts in output.items()}
+    return {
+        name: np.concatenate(parts).astype(np.float32) for name, parts in output.items()
+    }
 
 
 def ranking_by_aspect(query_vectors, gallery_vectors, query, gallery):
@@ -67,7 +85,11 @@ def ranking_by_aspect(query_vectors, gallery_vectors, query, gallery):
     add_bbox_buckets(rows)
     result = {}
     for aspect in ("normal", "wide", "tall"):
-        ranks = [int(row["rank"]) for row in rows if row["known"] and row["aspect_bucket"] == aspect]
+        ranks = [
+            int(row["rank"])
+            for row in rows
+            if row["known"] and row["aspect_bucket"] == aspect
+        ]
         result[aspect] = {
             "queries": len(ranks),
             "rank1": float(np.mean(np.array(ranks) <= 1)) if ranks else 0.0,
@@ -80,8 +102,12 @@ def ranking_by_aspect(query_vectors, gallery_vectors, query, gallery):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archive", type=Path, default=Path("data/dataset.zip"))
-    parser.add_argument("--checkpoint", type=Path, default=Path("outputs/resnet50_256/best.pt"))
-    parser.add_argument("--output", type=Path, default=Path("outputs/inference_variants.json"))
+    parser.add_argument(
+        "--checkpoint", type=Path, default=Path("outputs/convnext_tiny_256/best.pt")
+    )
+    parser.add_argument(
+        "--output", type=Path, default=Path("outputs/inference_variants.json")
+    )
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--workers", type=int, default=0)
     parser.add_argument("--device", default="auto")
@@ -98,8 +124,24 @@ def main():
     embedded = {}
     for split_name, (query, gallery) in protocols.items():
         embedded[split_name] = {
-            "query": embed_variants(model, args.archive, query, metadata["image_size"], device, args.batch_size, args.workers),
-            "gallery": embed_variants(model, args.archive, gallery, metadata["image_size"], device, args.batch_size, args.workers),
+            "query": embed_variants(
+                model,
+                args.archive,
+                query,
+                metadata["image_size"],
+                device,
+                args.batch_size,
+                args.workers,
+            ),
+            "gallery": embed_variants(
+                model,
+                args.archive,
+                gallery,
+                metadata["image_size"],
+                device,
+                args.batch_size,
+                args.workers,
+            ),
         }
 
     report = {}
@@ -114,14 +156,20 @@ def main():
         dev_gids = [row.vehicle_id for row in dev_gallery]
         holdout_qids = [row.vehicle_id for row in holdout_query]
         holdout_gids = [row.vehicle_id for row in holdout_gallery]
-        threshold = choose_refusal_threshold(dev_q, dev_g, dev_qids, dev_gids, "balanced")
+        threshold = choose_refusal_threshold(
+            dev_q, dev_g, dev_qids, dev_gids, "balanced"
+        )
         report[variant] = {
             "dev": retrieval_metrics(dev_q, dev_g, dev_qids, dev_gids),
-            "holdout": retrieval_metrics(holdout_q, holdout_g, holdout_qids, holdout_gids),
+            "holdout": retrieval_metrics(
+                holdout_q, holdout_g, holdout_qids, holdout_gids
+            ),
             "holdout_refusal_balanced": refusal_metrics(
                 holdout_q, holdout_g, holdout_qids, holdout_gids, threshold["threshold"]
             ),
-            "holdout_by_aspect": ranking_by_aspect(holdout_q, holdout_g, holdout_query, holdout_gallery),
+            "holdout_by_aspect": ranking_by_aspect(
+                holdout_q, holdout_g, holdout_query, holdout_gallery
+            ),
         }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2), encoding="utf-8")

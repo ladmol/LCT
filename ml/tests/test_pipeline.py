@@ -10,7 +10,7 @@ from PIL import Image
 from eval.metrics import choose_refusal_threshold, refusal_metrics, retrieval_metrics
 from reid.data import SquarePad, VehicleRecord, crop_vehicle
 from reid.external import ModelAwareBatchSampler, read_approved
-from reid.infer import VehicleAttributeRecognizer
+from reid.infer import VehicleAttributeRecognizer, combine_embeddings
 from reid.pretrain_external import main as pretrain_external
 from reid.protocol import cross_camera_protocol, split_identities
 from scripts.eval_external_pilot import leave_one_out_metrics
@@ -53,13 +53,37 @@ def test_ranking_and_refusal_are_separate_metrics():
     assert ranking["mAP"] == ranking["rank1"] == 1.0
     assert ranking["known_queries"] == 1
     chosen = choose_refusal_threshold(query, gallery, query_ids, gallery_ids)
-    assert refusal_metrics(query, gallery, query_ids, gallery_ids, chosen["threshold"])["f1"] == 1.0
+    assert (
+        refusal_metrics(query, gallery, query_ids, gallery_ids, chosen["threshold"])[
+            "f1"
+        ]
+        == 1.0
+    )
     assert chosen["tnr"] == 1.0
+
+
+def test_combined_embedding_is_unit_length_and_averages_cosines():
+    first = np.array([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32)
+    second = np.array([[0.6, 0.8], [0.8, 0.6]], dtype=np.float32)
+    combined = combine_embeddings(first, second, 0.5)
+    assert combined.shape == (2, 4)
+    assert np.allclose(np.linalg.norm(combined, axis=1), 1.0)
+    expected = 0.5 * (first @ first.T) + 0.5 * (second @ second.T)
+    assert np.allclose(combined @ combined.T, expected)
+    with pytest.raises(ValueError, match="same number"):
+        combine_embeddings(first, second[:1])
+    with pytest.raises(ValueError, match="two-dimensional"):
+        combine_embeddings(first[0], second[0])
+    with pytest.raises(ValueError, match="between zero and one"):
+        combine_embeddings(first, second, float("nan"))
 
 
 def test_external_pilot_excludes_the_query_photo_itself():
     features = np.array([[1, 0], [0.9, 0.1], [0, 1], [0.1, 0.9]], dtype=np.float32)
-    assert leave_one_out_metrics(features, ["a", "a", "b", "b"]) == {"mAP": 1.0, "rank1": 1.0}
+    assert leave_one_out_metrics(features, ["a", "a", "b", "b"]) == {
+        "mAP": 1.0,
+        "rank1": 1.0,
+    }
 
 
 def test_external_data_requires_review_and_enough_views(tmp_path):
@@ -68,9 +92,13 @@ def test_external_data_requires_review_and_enough_views(tmp_path):
     image = approved / "00.jpg"
     Image.new("RGB", (8, 8), "red").save(image)
     row = {
-        "image_path": "approved/listing/00.jpg", "instance_id": "listing",
-        "make": "toyota", "model": "camry", "restyling_label": "unknown",
-        "plate_reviewed": False, "face_reviewed": True,
+        "image_path": "approved/listing/00.jpg",
+        "instance_id": "listing",
+        "make": "toyota",
+        "model": "camry",
+        "restyling_label": "unknown",
+        "plate_reviewed": False,
+        "face_reviewed": True,
     }
     manifest = tmp_path / "approved.jsonl"
     manifest.write_text(json.dumps(row), encoding="utf-8")
@@ -88,19 +116,37 @@ def test_review_masks_plate_before_writing_approved_crop(tmp_path, monkeypatch):
     raw.mkdir(parents=True)
     Image.new("RGB", (20, 10), "white").save(raw / "00.jpg")
     source = {
-        "image_path": "raw/listing/00.jpg", "listing_id": "listing",
-        "make": "toyota", "model": "camry", "catalog_name": "Camry",
-        "restyling_label": "unknown", "source_url": "https://auto.ru/example",
+        "image_path": "raw/listing/00.jpg",
+        "listing_id": "listing",
+        "make": "toyota",
+        "model": "camry",
+        "catalog_name": "Camry",
+        "restyling_label": "unknown",
+        "source_url": "https://auto.ru/example",
     }
-    (tmp_path / "manifest.jsonl").write_text(json.dumps(source) + "\n", encoding="utf-8")
+    (tmp_path / "manifest.jsonl").write_text(
+        json.dumps(source) + "\n", encoding="utf-8"
+    )
     review = {
-        "image_path": source["image_path"], "status": "approved",
-        "vehicle_bbox": [0, 0, 20, 10], "redactions": [[2, 2, 5, 5]],
-        "plate_reviewed": True, "face_reviewed": True,
+        "image_path": source["image_path"],
+        "status": "approved",
+        "vehicle_bbox": [0, 0, 20, 10],
+        "redactions": [[2, 2, 5, 5]],
+        "plate_reviewed": True,
+        "face_reviewed": True,
         "restyling_label": "pre-restyling",
     }
     (tmp_path / "reviews.jsonl").write_text(json.dumps(review) + "\n", encoding="utf-8")
-    monkeypatch.setattr("sys.argv", ["review", "--data", str(tmp_path), "--reviews", str(tmp_path / "reviews.jsonl")])
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "review",
+            "--data",
+            str(tmp_path),
+            "--reviews",
+            str(tmp_path / "reviews.jsonl"),
+        ],
+    )
     process_reviews()
     approved = read_approved(tmp_path)
     assert approved[0].restyling == "pre-restyling"
@@ -120,24 +166,46 @@ def test_external_training_and_attribute_inference_smoke(tmp_path, monkeypatch):
         folder.mkdir(parents=True)
         for view in range(2):
             name = f"{view}.jpg"
-            Image.new("RGB", (64, 64), (identity * 25, view * 40, 100)).save(folder / name)
-            manifest.append({
-                "image_path": f"approved/{identity}/{name}", "instance_id": str(identity),
-                "make": make, "model": model,
-                "restyling_label": "restyling" if identity % 2 else "pre-restyling",
-                "plate_reviewed": True, "face_reviewed": True,
-            })
+            Image.new("RGB", (64, 64), (identity * 25, view * 40, 100)).save(
+                folder / name
+            )
+            manifest.append(
+                {
+                    "image_path": f"approved/{identity}/{name}",
+                    "instance_id": str(identity),
+                    "make": make,
+                    "model": model,
+                    "restyling_label": "restyling" if identity % 2 else "pre-restyling",
+                    "plate_reviewed": True,
+                    "face_reviewed": True,
+                }
+            )
     (data / "approved.jsonl").write_text(
         "".join(json.dumps(row) + "\n" for row in manifest), encoding="utf-8"
     )
     output = tmp_path / "model"
-    monkeypatch.setattr("sys.argv", [
-        "pretrain", "--data", str(data), "--output", str(output),
-        "--init-weights", str(weights), "--contest-archive", str(tmp_path / "missing.zip"),
-        "--epochs", "1", "--image-size", "64",
-    ])
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "pretrain",
+            "--data",
+            str(data),
+            "--output",
+            str(output),
+            "--init-weights",
+            str(weights),
+            "--contest-archive",
+            str(tmp_path / "missing.zip"),
+            "--epochs",
+            "1",
+            "--image-size",
+            "64",
+        ],
+    )
     pretrain_external()
     recognizer = VehicleAttributeRecognizer(output / "best.pt", device="cpu")
-    prediction = recognizer.predict((data / manifest[0]["image_path"]).read_bytes(), (0, 0, 64, 64))
+    prediction = recognizer.predict(
+        (data / manifest[0]["image_path"]).read_bytes(), (0, 0, 64, 64)
+    )
     assert prediction["make"]["label"] in {"toyota", "kia"}
     assert prediction["restyling"]["label"] in {"pre-restyling", "restyling"}

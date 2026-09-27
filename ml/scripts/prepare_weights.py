@@ -19,7 +19,11 @@ from torchvision.models import (
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--arch", choices=["resnet18", "resnet50", "convnext_tiny"], default="resnet50")
+    parser.add_argument(
+        "--arch",
+        choices=["resnet18", "resnet50", "convnext_tiny"],
+        default="convnext_tiny",
+    )
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     output = args.output or Path(f"data/weights/{args.arch}_imagenet.pth")

@@ -30,17 +30,23 @@ def read_approved(data_dir: Path) -> list[ExternalRecord]:
     records = []
     for line in manifest.read_text(encoding="utf-8").splitlines():
         row = json.loads(line)
-        if row.get("plate_reviewed") is not True or row.get("face_reviewed") is not True:
+        if (
+            row.get("plate_reviewed") is not True
+            or row.get("face_reviewed") is not True
+        ):
             raise ValueError(f"Unreviewed external image: {row.get('image_path')}")
         path = (data_dir / row["image_path"]).resolve()
-        if not path.is_relative_to((data_dir / "approved").resolve()) or not path.is_file():
+        if (
+            not path.is_relative_to((data_dir / "approved").resolve())
+            or not path.is_file()
+        ):
             raise ValueError(f"Approved image is missing or outside approved/: {path}")
         records.append(
             ExternalRecord(
                 path=path,
                 instance_id=row["instance_id"],
                 make=row["make"].lower(),
-                model=f'{row["make"]}/{row["model"]}'.lower(),
+                model=f"{row['make']}/{row['model']}".lower(),
                 restyling=row.get("restyling_label", "unknown"),
             )
         )
@@ -48,7 +54,12 @@ def read_approved(data_dir: Path) -> list[ExternalRecord]:
 
 
 class ApprovedAutoDataset(Dataset):
-    def __init__(self, records: list[ExternalRecord], image_size: int, labels: dict[str, dict[str, int]]):
+    def __init__(
+        self,
+        records: list[ExternalRecord],
+        image_size: int,
+        labels: dict[str, dict[str, int]],
+    ):
         self.records = records
         self.transform = image_transform(image_size, training=True)
         self.labels = labels
@@ -73,7 +84,13 @@ class ApprovedAutoDataset(Dataset):
 class ModelAwareBatchSampler(Sampler[list[int]]):
     """Prefer two different cars of the same model in every identity batch."""
 
-    def __init__(self, records: list[ExternalRecord], identities: int = 8, views: int = 2, seed: int = 42):
+    def __init__(
+        self,
+        records: list[ExternalRecord],
+        identities: int = 8,
+        views: int = 2,
+        seed: int = 42,
+    ):
         self.records = records
         self.identities = identities
         self.views = views
@@ -85,7 +102,9 @@ class ModelAwareBatchSampler(Sampler[list[int]]):
             self.by_id.setdefault(record.instance_id, []).append(index)
             self.by_model.setdefault(record.model, set()).add(record.instance_id)
         if identities < 2 or views < 2 or len(self.by_id) < identities:
-            raise ValueError("Need at least P distinct instances and two photos per instance")
+            raise ValueError(
+                "Need at least P distinct instances and two photos per instance"
+            )
         if min(Counter(record.instance_id for record in records).values()) < views:
             raise ValueError(f"Each approved listing needs at least {views} photos")
 
@@ -102,7 +121,12 @@ class ModelAwareBatchSampler(Sampler[list[int]]):
                 selected = rng.sample(sorted(self.by_model[rng.choice(models)]), 2)
             else:
                 selected = rng.sample(all_ids, 2)
-            selected.extend(rng.sample([identity for identity in all_ids if identity not in selected], self.identities - 2))
+            selected.extend(
+                rng.sample(
+                    [identity for identity in all_ids if identity not in selected],
+                    self.identities - 2,
+                )
+            )
             batch = []
             for identity in selected:
                 batch.extend(rng.sample(self.by_id[identity], self.views))

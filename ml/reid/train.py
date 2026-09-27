@@ -26,9 +26,17 @@ def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archive", type=Path, default=Path("data/dataset.zip"))
     parser.add_argument("--output", type=Path, default=Path("outputs/resnet50_256"))
-    parser.add_argument("--init-weights", type=Path, default=Path("data/weights/resnet50_imagenet.pth"))
-    parser.add_argument("--resume", type=Path, help="Continue from a compatible Re-ID checkpoint")
-    parser.add_argument("--arch", choices=["resnet18", "resnet50", "convnext_tiny"], default="resnet50")
+    parser.add_argument(
+        "--init-weights", type=Path, default=Path("data/weights/resnet50_imagenet.pth")
+    )
+    parser.add_argument(
+        "--resume", type=Path, help="Continue from a compatible Re-ID checkpoint"
+    )
+    parser.add_argument(
+        "--arch",
+        choices=["resnet18", "resnet50", "convnext_tiny"],
+        default="convnext_tiny",
+    )
     parser.add_argument("--epochs", type=int, default=12)
     parser.add_argument("--image-size", type=int, default=256)
     parser.add_argument("--identities-per-batch", type=int, default=4)
@@ -39,14 +47,25 @@ def parse_args():
     parser.add_argument("--augmentation", choices=["basic", "strong"], default="basic")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="auto")
-    parser.add_argument("--max-steps", type=int, default=0, help="For a quick smoke run; 0 means full epochs")
+    parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=0,
+        help="For a quick smoke run; 0 means full epochs",
+    )
     return parser.parse_args()
 
 
-def evaluate(model, archive, records, identities, image_size, device, batch_size, workers, seed):
+def evaluate(
+    model, archive, records, identities, image_size, device, batch_size, workers, seed
+):
     query, gallery = cross_camera_protocol(records, identities, seed)
-    query_vectors = embed_records(model, archive, query, image_size, device, batch_size, workers)
-    gallery_vectors = embed_records(model, archive, gallery, image_size, device, batch_size, workers)
+    query_vectors = embed_records(
+        model, archive, query, image_size, device, batch_size, workers
+    )
+    gallery_vectors = embed_records(
+        model, archive, gallery, image_size, device, batch_size, workers
+    )
     query_ids = [record.vehicle_id for record in query]
     gallery_ids = [record.vehicle_id for record in gallery]
     ranking = retrieval_metrics(
@@ -70,14 +89,24 @@ def main():
     torch.manual_seed(args.seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
-    device = torch.device("cuda" if args.device == "auto" and torch.cuda.is_available() else "cpu" if args.device == "auto" else args.device)
+    device = torch.device(
+        "cuda"
+        if args.device == "auto" and torch.cuda.is_available()
+        else "cpu"
+        if args.device == "auto"
+        else args.device
+    )
     records = read_records(args.archive, "train.csv")
     splits = split_identities(records, args.seed)
-    (args.output / "split.json").write_text(json.dumps(splits, indent=2), encoding="utf-8")
+    (args.output / "split.json").write_text(
+        json.dumps(splits, indent=2), encoding="utf-8"
+    )
     train_ids = set(splits["train"])
     train_records = [record for record in records if record.vehicle_id in train_ids]
     labels = {identity: index for index, identity in enumerate(sorted(train_ids))}
-    sampler = IdentityBatchSampler(train_records, args.identities_per_batch, args.views_per_identity, args.seed)
+    sampler = IdentityBatchSampler(
+        train_records, args.identities_per_batch, args.views_per_identity, args.seed
+    )
     train_loader = DataLoader(
         ContestDataset(
             args.archive,
@@ -96,26 +125,40 @@ def main():
     if args.resume:
         resumed = torch.load(args.resume, map_location="cpu", weights_only=True)
         if (resumed["arch"], resumed["image_size"], resumed["num_classes"]) != (
-            args.arch, args.image_size, len(labels)
+            args.arch,
+            args.image_size,
+            len(labels),
         ):
-            raise ValueError("Resume checkpoint architecture, image size, or class count differs")
+            raise ValueError(
+                "Resume checkpoint architecture, image size, or class count differs"
+            )
         model.load_state_dict(resumed["model"])
         print(f"Resumed model: {args.resume}", flush=True)
     elif args.init_weights.is_file():
         state = torch.load(args.init_weights, map_location="cpu", weights_only=True)
         if "model" in state:
-            state = {key.removeprefix("backbone."): value for key, value in state["model"].items() if key.startswith("backbone.")}
+            state = {
+                key.removeprefix("backbone."): value
+                for key, value in state["model"].items()
+                if key.startswith("backbone.")
+            }
         incompatible = model.backbone.load_state_dict(state, strict=False)
         expected_head = (
             {"fc.weight", "fc.bias"}
             if args.arch.startswith("resnet")
             else {"classifier.2.weight", "classifier.2.bias"}
         )
-        if incompatible.missing_keys or set(incompatible.unexpected_keys) not in (set(), expected_head):
+        if incompatible.missing_keys or set(incompatible.unexpected_keys) not in (
+            set(),
+            expected_head,
+        ):
             raise ValueError(f"Unexpected pretrained weights: {incompatible}")
         print(f"Loaded pretrained backbone: {args.init_weights}", flush=True)
     else:
-        print(f"WARNING: {args.init_weights} missing; training the backbone from scratch", flush=True)
+        print(
+            f"WARNING: {args.init_weights} missing; training the backbone from scratch",
+            flush=True,
+        )
     model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
     scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
@@ -123,12 +166,18 @@ def main():
     best_path = args.output / "best.pt"
     if resumed and args.resume.resolve() != best_path.resolve():
         torch.save(resumed, best_path)
-    print(f"device={device} train_images={len(train_records)} train_ids={len(labels)} batches={len(train_loader)}", flush=True)
+    print(
+        f"device={device} train_images={len(train_records)} train_ids={len(labels)} batches={len(train_loader)}",
+        flush=True,
+    )
     for epoch in range(args.epochs):
         model.train()
         losses = []
         for step, (images, targets, _) in enumerate(train_loader):
-            images, targets = images.to(device, non_blocking=True), targets.to(device, non_blocking=True)
+            images, targets = (
+                images.to(device, non_blocking=True),
+                targets.to(device, non_blocking=True),
+            )
             optimizer.zero_grad(set_to_none=True)
             with torch.autocast(device_type=device.type, enabled=device.type == "cuda"):
                 embedding, logits = model(images)
@@ -145,11 +194,21 @@ def main():
                 break
         model.eval()
         ranking, *_ = evaluate(
-            model, args.archive, records, splits["dev"], args.image_size, device,
-            args.eval_batch_size, args.workers, args.seed + 1,
+            model,
+            args.archive,
+            records,
+            splits["dev"],
+            args.image_size,
+            device,
+            args.eval_batch_size,
+            args.workers,
+            args.seed + 1,
         )
         current_epoch = (int(resumed["epoch"]) if resumed else 0) + epoch + 1
-        print(f"epoch={current_epoch} loss={np.mean(losses):.4f} dev={ranking}", flush=True)
+        print(
+            f"epoch={current_epoch} loss={np.mean(losses):.4f} dev={ranking}",
+            flush=True,
+        )
         if ranking["mAP"] > best_map:
             best_map = ranking["mAP"]
             torch.save(
@@ -169,16 +228,34 @@ def main():
     model.load_state_dict(checkpoint["model"])
     model.to(device).eval()
     dev_rank, dev_query, dev_gallery, dev_qids, dev_gids = evaluate(
-        model, args.archive, records, splits["dev"], args.image_size, device,
-        args.eval_batch_size, args.workers, args.seed + 1,
+        model,
+        args.archive,
+        records,
+        splits["dev"],
+        args.image_size,
+        device,
+        args.eval_batch_size,
+        args.workers,
+        args.seed + 1,
     )
-    threshold_result = choose_refusal_threshold(dev_query, dev_gallery, dev_qids, dev_gids)
+    threshold_result = choose_refusal_threshold(
+        dev_query, dev_gallery, dev_qids, dev_gids
+    )
     threshold = threshold_result["threshold"]
     holdout_rank, holdout_query, holdout_gallery, holdout_qids, holdout_gids = evaluate(
-        model, args.archive, records, splits["holdout"], args.image_size, device,
-        args.eval_batch_size, args.workers, args.seed + 2,
+        model,
+        args.archive,
+        records,
+        splits["holdout"],
+        args.image_size,
+        device,
+        args.eval_batch_size,
+        args.workers,
+        args.seed + 2,
     )
-    holdout_refusal = refusal_metrics(holdout_query, holdout_gallery, holdout_qids, holdout_gids, threshold)
+    holdout_refusal = refusal_metrics(
+        holdout_query, holdout_gallery, holdout_qids, holdout_gids, threshold
+    )
     checkpoint["refusal_threshold"] = threshold
     torch.save(checkpoint, best_path)
     report = {
@@ -189,7 +266,9 @@ def main():
         "holdout_refusal": holdout_refusal,
         "note": "Local protocol uses one gallery camera per known identity; hidden evaluation may differ.",
     }
-    (args.output / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    (args.output / "report.json").write_text(
+        json.dumps(report, indent=2), encoding="utf-8"
+    )
     print(json.dumps(report, indent=2), flush=True)
 
 

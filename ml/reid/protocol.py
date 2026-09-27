@@ -7,8 +7,12 @@ import random
 from reid.data import VehicleRecord
 
 
-def split_identities(records: list[VehicleRecord], seed: int = 42) -> dict[str, list[str]]:
-    identities = sorted({record.vehicle_id for record in records if record.vehicle_id is not None})
+def split_identities(
+    records: list[VehicleRecord], seed: int = 42
+) -> dict[str, list[str]]:
+    identities = sorted(
+        {record.vehicle_id for record in records if record.vehicle_id is not None}
+    )
     random.Random(seed).shuffle(identities)
     train_end = round(len(identities) * 0.70)
     dev_end = round(len(identities) * 0.85)
@@ -48,7 +52,12 @@ def cross_camera_protocol(
             continue
         gallery_camera = rng.choice(cameras)
         gallery.append(rng.choice(by_camera[gallery_camera]))
-        query.extend(record for camera in cameras if camera != gallery_camera for record in by_camera[camera])
+        query.extend(
+            record
+            for camera in cameras
+            if camera != gallery_camera
+            for record in by_camera[camera]
+        )
     if not query or not gallery:
         raise ValueError("Cannot build a cross-camera query/gallery protocol")
     return query, gallery

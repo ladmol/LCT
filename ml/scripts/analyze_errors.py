@@ -30,31 +30,42 @@ def rank_rows(
     for index, (record, score) in enumerate(zip(query, scores)):
         order = np.argsort(-score, kind="stable")
         top = int(order[0])
-        matches = [position for position, candidate in enumerate(order, start=1)
-                   if gallery_ids[int(candidate)] == record.vehicle_id]
+        matches = [
+            position
+            for position, candidate in enumerate(order, start=1)
+            if gallery_ids[int(candidate)] == record.vehicle_id
+        ]
         rank = matches[0] if matches else None
         true_index = int(order[rank - 1]) if rank is not None else None
         true_score = float(score[true_index]) if true_index is not None else None
-        rows.append({
-            "query_index": index,
-            "query_id": record.image_id,
-            "vehicle_id": record.vehicle_id,
-            "query_camera": record.camera_id,
-            "bbox_width": record.bbox[2],
-            "bbox_height": record.bbox[3],
-            "bbox_area": record.bbox[2] * record.bbox[3],
-            "bbox_aspect": record.bbox[2] / record.bbox[3],
-            "known": rank is not None,
-            "rank": rank,
-            "top1_id": gallery[top].image_id,
-            "top1_vehicle_id": gallery[top].vehicle_id,
-            "top1_camera": gallery[top].camera_id,
-            "top1_score": float(score[top]),
-            "true_gallery_id": gallery[true_index].image_id if true_index is not None else None,
-            "true_gallery_camera": gallery[true_index].camera_id if true_index is not None else None,
-            "true_score": true_score,
-            "wrong_margin": float(score[top] - true_score) if rank is not None and rank > 1 else 0.0,
-        })
+        rows.append(
+            {
+                "query_index": index,
+                "query_id": record.image_id,
+                "vehicle_id": record.vehicle_id,
+                "query_camera": record.camera_id,
+                "bbox_width": record.bbox[2],
+                "bbox_height": record.bbox[3],
+                "bbox_area": record.bbox[2] * record.bbox[3],
+                "bbox_aspect": record.bbox[2] / record.bbox[3],
+                "known": rank is not None,
+                "rank": rank,
+                "top1_id": gallery[top].image_id,
+                "top1_vehicle_id": gallery[top].vehicle_id,
+                "top1_camera": gallery[top].camera_id,
+                "top1_score": float(score[top]),
+                "true_gallery_id": gallery[true_index].image_id
+                if true_index is not None
+                else None,
+                "true_gallery_camera": gallery[true_index].camera_id
+                if true_index is not None
+                else None,
+                "true_score": true_score,
+                "wrong_margin": float(score[top] - true_score)
+                if rank is not None and rank > 1
+                else 0.0,
+            }
+        )
     return rows
 
 
@@ -99,18 +110,29 @@ def add_bbox_buckets(rows: list[dict[str, object]]) -> list[float]:
     boundaries = [float(value) for value in np.quantile(areas, [0.25, 0.5, 0.75])]
     labels = ("smallest", "small", "large", "largest")
     for row in rows:
-        row["bbox_bucket"] = labels[int(np.searchsorted(boundaries, float(row["bbox_area"]), side="right"))]
+        row["bbox_bucket"] = labels[
+            int(np.searchsorted(boundaries, float(row["bbox_area"]), side="right"))
+        ]
         aspect = float(row["bbox_aspect"])
-        row["aspect_bucket"] = "tall" if aspect < 1 else "wide" if aspect > 2 else "normal"
+        row["aspect_bucket"] = (
+            "tall" if aspect < 1 else "wide" if aspect > 2 else "normal"
+        )
         if row["known"]:
-            row["camera_pair"] = f"{row['query_camera']} -> {row['true_gallery_camera']}"
+            row["camera_pair"] = (
+                f"{row['query_camera']} -> {row['true_gallery_camera']}"
+            )
         else:
             row["camera_pair"] = "unknown"
     return boundaries
 
 
-def _load_crop(source: zipfile.ZipFile, record: VehicleRecord, size: tuple[int, int]) -> Image.Image:
-    with source.open(f"images/{record.image_id}.jpg") as raw, Image.open(io.BytesIO(raw.read())) as image:
+def _load_crop(
+    source: zipfile.ZipFile, record: VehicleRecord, size: tuple[int, int]
+) -> Image.Image:
+    with (
+        source.open(f"images/{record.image_id}.jpg") as raw,
+        Image.open(io.BytesIO(raw.read())) as image,
+    ):
         crop = crop_vehicle(image, record.bbox)
     crop.thumbnail(size, Image.Resampling.LANCZOS)
     canvas = Image.new("RGB", size, "white")
@@ -134,7 +156,9 @@ def make_contact_sheet(
         reverse=True,
     )[:limit]
     tile_w, tile_h, header = 240, 180, 38
-    sheet = Image.new("RGB", (tile_w * 3, (tile_h + header) * len(mistakes)), (238, 238, 238))
+    sheet = Image.new(
+        "RGB", (tile_w * 3, (tile_h + header) * len(mistakes)), (238, 238, 238)
+    )
     draw = ImageDraw.Draw(sheet)
     with zipfile.ZipFile(archive) as source:
         for row_index, row in enumerate(mistakes):
@@ -151,7 +175,9 @@ def make_contact_sheet(
             )
             for column, (record, title) in enumerate(zip(records, titles)):
                 x = column * tile_w
-                sheet.paste(_load_crop(source, record, (tile_w, tile_h)), (x, y + header))
+                sheet.paste(
+                    _load_crop(source, record, (tile_w, tile_h)), (x, y + header)
+                )
                 draw.text((x + 5, y + 5), title, fill=(0, 0, 0))
                 draw.text((x + 5, y + 20), record.image_id[:28], fill=(50, 50, 50))
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -162,8 +188,12 @@ def make_contact_sheet(
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archive", type=Path, default=Path("data/dataset.zip"))
-    parser.add_argument("--checkpoint", type=Path, default=Path("outputs/resnet50_256/best.pt"))
-    parser.add_argument("--output", type=Path, default=Path("outputs/error_analysis_resnet50_256"))
+    parser.add_argument(
+        "--checkpoint", type=Path, default=Path("outputs/convnext_tiny_256/best.pt")
+    )
+    parser.add_argument(
+        "--output", type=Path, default=Path("outputs/error_analysis_resnet50_256")
+    )
     parser.add_argument("--split", choices=("dev", "holdout"), default="holdout")
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--workers", type=int, default=0)
@@ -175,9 +205,27 @@ def main():
     records = read_records(args.archive, "train.csv")
     splits = split_identities(records, int(metadata.get("seed", 42)))
     seed_offset = 1 if args.split == "dev" else 2
-    query, gallery = cross_camera_protocol(records, splits[args.split], int(metadata.get("seed", 42)) + seed_offset)
-    query_vectors = embed_records(model, args.archive, query, metadata["image_size"], device, args.batch_size, args.workers)
-    gallery_vectors = embed_records(model, args.archive, gallery, metadata["image_size"], device, args.batch_size, args.workers)
+    query, gallery = cross_camera_protocol(
+        records, splits[args.split], int(metadata.get("seed", 42)) + seed_offset
+    )
+    query_vectors = embed_records(
+        model,
+        args.archive,
+        query,
+        metadata["image_size"],
+        device,
+        args.batch_size,
+        args.workers,
+    )
+    gallery_vectors = embed_records(
+        model,
+        args.archive,
+        gallery,
+        metadata["image_size"],
+        device,
+        args.batch_size,
+        args.workers,
+    )
     rows = rank_rows(query_vectors, gallery_vectors, query, gallery)
     boundaries = add_bbox_buckets(rows)
     args.output.mkdir(parents=True, exist_ok=True)
@@ -187,7 +235,14 @@ def main():
         writer = csv.DictWriter(raw, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
-    sheet_rows = make_contact_sheet(args.archive, rows, query, gallery, args.output / "confident_mistakes.jpg", args.sheet_size)
+    sheet_rows = make_contact_sheet(
+        args.archive,
+        rows,
+        query,
+        gallery,
+        args.output / "confident_mistakes.jpg",
+        args.sheet_size,
+    )
     unknown_scores = [float(row["top1_score"]) for row in rows if not row["known"]]
     report = {
         "checkpoint": str(args.checkpoint),
@@ -205,7 +260,9 @@ def main():
         },
         "contact_sheet_rows": sheet_rows,
     }
-    (args.output / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    (args.output / "report.json").write_text(
+        json.dumps(report, indent=2), encoding="utf-8"
+    )
     print(json.dumps(report, indent=2))
 
 
