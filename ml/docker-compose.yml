@@ -1,0 +1,7 @@
+services:
+  inference:
+    build: .
+    network_mode: none
+    volumes:
+      - ./data:/app/data:ro
+      - ./outputs:/app/outputs

@@ -46,3 +46,25 @@ def batch_hard_triplet(
     hardest_positive = distances.masked_fill(~same | eye, -1).max(dim=1).values
     hardest_negative = distances.masked_fill(same, float("inf")).min(dim=1).values
     return F.relu(hardest_positive - hardest_negative + margin).mean()
+
+
+def arcface_logits(
+    embedding: torch.Tensor,
+    classifier_weight: torch.Tensor,
+    labels: torch.Tensor,
+    *,
+    margin: float = 0.2,
+    scale: float = 30.0,
+) -> torch.Tensor:
+    """Apply an angular margin to the target identity while keeping cosine logits."""
+    if not 0 <= margin < 1 or scale <= 0:
+        raise ValueError("ArcFace margin and scale must be valid positive values")
+    with torch.autocast(device_type=embedding.device.type, enabled=False):
+        cosine = F.linear(
+            F.normalize(embedding.float(), dim=1),
+            F.normalize(classifier_weight.float(), dim=1),
+        ).clamp(-1 + 1e-6, 1 - 1e-6)
+        target_cosine = cosine.gather(1, labels[:, None])
+        target_with_margin = torch.cos(torch.acos(target_cosine) + margin)
+        logits = cosine.scatter(1, labels[:, None], target_with_margin)
+        return logits * scale

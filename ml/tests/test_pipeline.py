@@ -5,12 +5,16 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import torch
 from PIL import Image
 
+from eval.decision import choose_decision_rule, decision_metrics, decision_values
 from eval.metrics import choose_refusal_threshold, refusal_metrics, retrieval_metrics
+from reid.autonomy import decide_match, pool_tracklet_embeddings
 from reid.data import SquarePad, VehicleRecord, crop_vehicle
 from reid.external import ModelAwareBatchSampler, read_approved
 from reid.infer import VehicleAttributeRecognizer, combine_embeddings
+from reid.model import arcface_logits
 from reid.pretrain_external import main as pretrain_external
 from reid.protocol import cross_camera_protocol, split_identities
 from scripts.eval_external_pilot import leave_one_out_metrics
@@ -76,6 +80,42 @@ def test_combined_embedding_is_unit_length_and_averages_cosines():
         combine_embeddings(first[0], second[0])
     with pytest.raises(ValueError, match="between zero and one"):
         combine_embeddings(first, second, float("nan"))
+
+
+def test_tracklet_pooling_and_margin_decision():
+    pooled = pool_tracklet_embeddings(
+        np.array([[1.0, 0.0], [0.8, 0.2]], dtype=np.float32)
+    )
+    decision = decide_match(
+        pooled,
+        np.array([[1.0, 0.0], [0.7, 0.7]], dtype=np.float32),
+        similarity_threshold=0.8,
+        margin_threshold=0.1,
+    )
+    assert np.isclose(np.linalg.norm(pooled), 1.0)
+    assert decision.gallery_index == 0 and decision.accepted
+
+
+def test_arcface_reduces_the_target_logit_by_an_angular_margin():
+    embedding = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
+    weight = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
+    labels = torch.tensor([0, 1])
+    logits = arcface_logits(embedding, weight, labels, margin=0.2, scale=1.0)
+    assert torch.all((0.97 < logits.diag()) & (logits.diag() < 1.0))
+    assert torch.allclose(logits.flip(1).diag(), torch.zeros(2), atol=1e-5)
+
+
+def test_margin_rule_can_reject_an_ambiguous_top1():
+    query = np.array([[1.0, 0.0], [0.7, 0.7], [0.0, 1.0]], dtype=np.float32)
+    query /= np.linalg.norm(query, axis=1, keepdims=True)
+    gallery = np.array([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32)
+    values = decision_values(query, gallery, ["a", "unknown", "b"], ["a", "b"])
+    metrics = decision_metrics(values, similarity_threshold=0.5, margin_threshold=0.2)
+    assert metrics["precision"] == metrics["recall"] == metrics["tnr"] == 1.0
+    rule = choose_decision_rule(
+        query, gallery, ["a", "unknown", "b"], ["a", "b"], objective="balanced"
+    )
+    assert rule["precision"] == rule["tnr"] == 1.0
 
 
 def test_external_pilot_excludes_the_query_photo_itself():

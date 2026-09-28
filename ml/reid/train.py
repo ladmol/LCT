@@ -18,7 +18,7 @@ from torch.utils.data import DataLoader
 from eval.metrics import choose_refusal_threshold, refusal_metrics, retrieval_metrics
 from reid.data import ContestDataset, IdentityBatchSampler, read_records
 from reid.infer import embed_records
-from reid.model import VehicleReID, batch_hard_triplet
+from reid.model import VehicleReID, arcface_logits, batch_hard_triplet
 from reid.protocol import cross_camera_protocol, split_identities
 
 
@@ -44,6 +44,24 @@ def parse_args():
     parser.add_argument("--eval-batch-size", type=int, default=32)
     parser.add_argument("--workers", type=int, default=0)
     parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument(
+        "--head-lr",
+        type=float,
+        help="Optional classifier learning rate; defaults to --lr",
+    )
+    parser.add_argument(
+        "--freeze-backbone-epochs",
+        type=int,
+        default=0,
+        help="Train only the new classifier for the first N epochs",
+    )
+    parser.add_argument(
+        "--classification-loss", choices=["softmax", "arcface"], default="softmax"
+    )
+    parser.add_argument("--arc-margin", type=float, default=0.2)
+    parser.add_argument("--arc-scale", type=float, default=30.0)
+    parser.add_argument("--triplet-weight", type=float, default=0.5)
+    parser.add_argument("--label-smoothing", type=float, default=0.0)
     parser.add_argument("--augmentation", choices=["basic", "strong"], default="basic")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="auto")
@@ -81,7 +99,15 @@ def evaluate(
 
 def main():
     args = parse_args()
-    if args.epochs < 1 or args.image_size < 64 or args.lr <= 0:
+    if (
+        args.epochs < 1
+        or args.image_size < 64
+        or args.lr <= 0
+        or (args.head_lr is not None and args.head_lr <= 0)
+        or args.freeze_backbone_epochs < 0
+        or args.triplet_weight < 0
+        or not 0 <= args.label_smoothing < 1
+    ):
         raise ValueError("epochs, image-size, and learning rate must be positive")
     args.output.mkdir(parents=True, exist_ok=True)
     random.seed(args.seed)
@@ -143,11 +169,10 @@ def main():
                 if key.startswith("backbone.")
             }
         incompatible = model.backbone.load_state_dict(state, strict=False)
-        expected_head = (
-            {"fc.weight", "fc.bias"}
-            if args.arch.startswith("resnet")
-            else {"classifier.2.weight", "classifier.2.bias"}
-        )
+        if args.arch.startswith("resnet"):
+            expected_head = {"fc.weight", "fc.bias"}
+        else:
+            expected_head = {"classifier.2.weight", "classifier.2.bias"}
         if incompatible.missing_keys or set(incompatible.unexpected_keys) not in (
             set(),
             expected_head,
@@ -160,7 +185,16 @@ def main():
             flush=True,
         )
     model.to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
+    optimizer = torch.optim.AdamW(
+        [
+            {"params": model.backbone.parameters(), "lr": args.lr},
+            {
+                "params": model.classifier.parameters(),
+                "lr": args.head_lr or args.lr,
+            },
+        ],
+        weight_decay=1e-4,
+    )
     scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
     best_map = float(resumed["dev_map"]) if resumed else -1.0
     best_path = args.output / "best.pt"
@@ -171,6 +205,8 @@ def main():
         flush=True,
     )
     for epoch in range(args.epochs):
+        backbone_trainable = epoch >= args.freeze_backbone_epochs
+        model.backbone.requires_grad_(backbone_trainable)
         model.train()
         losses = []
         for step, (images, targets, _) in enumerate(train_loader):
@@ -183,9 +219,21 @@ def main():
                 embedding, logits = model(images)
                 if logits is None:
                     raise RuntimeError("Classifier missing during training")
-                classification = F.cross_entropy(logits, targets)
+                if args.classification_loss == "arcface":
+                    if model.classifier is None:
+                        raise RuntimeError("Classifier missing during ArcFace training")
+                    logits = arcface_logits(
+                        embedding,
+                        model.classifier.weight,
+                        targets,
+                        margin=args.arc_margin,
+                        scale=args.arc_scale,
+                    )
+                classification = F.cross_entropy(
+                    logits, targets, label_smoothing=args.label_smoothing
+                )
                 metric = batch_hard_triplet(embedding, targets)
-                loss = classification + 0.5 * metric
+                loss = classification + args.triplet_weight * metric
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
@@ -221,6 +269,14 @@ def main():
                     "dev_map": best_map,
                     "seed": args.seed,
                     "augmentation": args.augmentation,
+                    "classification_loss": args.classification_loss,
+                    "arc_margin": args.arc_margin,
+                    "arc_scale": args.arc_scale,
+                    "triplet_weight": args.triplet_weight,
+                    "label_smoothing": args.label_smoothing,
+                    "backbone_lr": args.lr,
+                    "head_lr": args.head_lr or args.lr,
+                    "freeze_backbone_epochs": args.freeze_backbone_epochs,
                 },
                 best_path,
             )

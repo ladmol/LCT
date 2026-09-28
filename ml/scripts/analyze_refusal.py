@@ -50,7 +50,7 @@ def main():
         args.workers,
         seed + 2,
     )
-    result = {}
+    result = {"dev_ranking": dev[0], "holdout_ranking": holdout[0]}
     for objective in ("f1", "balanced"):
         calibrated = choose_refusal_threshold(dev[1], dev[2], dev[3], dev[4], objective)
         measured = refusal_metrics(

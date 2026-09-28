@@ -3,31 +3,33 @@
 Этот каталог содержит воспроизводимый Vehicle Re-ID конвейер: обучение,
 локальную оценку, построение цифрового признака и экспорт конкурсных файлов.
 Сервис получает полный JPEG и готовые BBox автомобилей в формате
-`(x, y, width, height)`. Детектор и OCR находятся за границей этого модуля.
+`(x, y, width, height)`. Номерные знаки не распознаются, не сохраняются и не
+используются как вход или признак модели.
 
 ## Рекомендуемая конфигурация
 
 Основной режим по качеству — ансамбль двух моделей:
 
-- `outputs/convnext_tiny_256/best.pt`, ConvNeXt Tiny, 256×256;
-- `outputs/resnet50_256_finetune/best.pt`, ResNet50, 256×256;
+- `weights/convnext_tiny_256_fp16.pt`, ConvNeXt Tiny, 256×256;
+- `weights/resnet50_256_fp16.pt`, ResNet50, 256×256;
 - оригинальный и отражённый по горизонтали кроп усредняются отдельно в каждой
   модели;
 - два L2-нормированных признака объединяются с равными весами в один вектор
   `float32` размерности 2816;
-- стартовый порог принятия по cosine similarity: `0.5146225095`.
+- стартовый порог принятия по cosine similarity: `0.5051871538`.
 
-На фиксированном holdout ансамбль получил mAP `0.5630`, Rank-1 `0.4398`,
-Rank-5 `0.7127`, F1 принятого top-1 `0.4336` и TNR неизвестных машин `0.7414`.
+На фиксированном holdout ансамбль получил mAP `0.5699`, Rank-1 `0.4446`,
+Rank-5 `0.7207`, F1 принятого top-1 `0.4505` и TNR неизвестных машин `0.7241`.
 На RTX 3060 полный путь от JPEG и BBox до вектора работает примерно со
-скоростью 27,5 объекта/с при batch 16, пиковая CUDA-память — 444 МБ.
+скоростью 29,1 объекта/с при batch 16, пиковая CUDA-память - 431 МБ. При
+batch 1 получено 23,0 объекта/с, то есть около 43,6 мс на объект.
 
 Если важнее скорость, можно использовать только ConvNeXt без отражения:
-вектор 768, mAP `0.5255`, Rank-1 `0.4077`, около 63 объектов/с и 275 МБ CUDA.
+вектор 768, mAP `0.5271`, Rank-1 `0.4109`, около 63 объектов/с и 275 МБ CUDA.
 Это отдельная версия модели, поэтому смешивать её векторы с ансамблем нельзя.
 
 Полная таблица опытов и отрицательные результаты находятся в
-[`EXPERIMENTS.md`](EXPERIMENTS.md). Контрольные суммы локальных checkpoint и
+[`EXPERIMENTS.md`](EXPERIMENTS.md). Контрольные суммы deployment-весов и
 готового экспорта зафиксированы в [`MODEL_ARTIFACTS.md`](MODEL_ARTIFACTS.md).
 
 ## Как создаётся цифровой признак
@@ -73,6 +75,19 @@ Rank-5 `0.7127`, F1 принятого top-1 `0.4336` и TNR неизвестн�
 - TNR показывает долю правильных отказов для машин без совпадения;
 - `confidence = (cosine + 1) / 2` в CSV является score, а не вероятностью.
 
+## Соответствие условиям хакатона
+
+- номерные знаки и любые их остаточные признаки не используются;
+- `submission/submission.csv` содержит top-10 для каждого query;
+- `submission/embeddings.npy` хранит `float32`-векторы сначала query, затем
+  gallery в исходном порядке CSV;
+- `submission/candidates.csv` содержит принятых кандидатов или строку отказа;
+- веса входят в `weights/`, их суммарный размер около 98 МиБ при лимите 2 ГБ;
+- инференс запускается одной Docker-командой с отключённой сетью;
+- код обучения, инференса, зависимости и валидатор входят в репозиторий;
+- весь test обрабатывается батчами без накопления изображений и embeddings на
+  GPU, что ограничивает потребление видеопамяти.
+
 ## Структура
 
 | Путь | Назначение |
@@ -81,21 +96,27 @@ Rank-5 `0.7127`, F1 принятого top-1 `0.4336` и TNR неизвестн�
 | `reid/model.py` | ResNet18, ResNet50, ConvNeXt Tiny и triplet loss |
 | `reid/train.py` | Обучение, выбор эпохи и локальная оценка |
 | `reid/infer.py` | API одной модели и ансамбля для backend |
+| `reid/autonomy.py` | Агрегация трека и решение similarity + margin |
 | `reid/protocol.py` | Разделение идентичностей и cross-camera протокол |
 | `eval/metrics.py` | mAP, Rank-1/5, F1, TNR и подбор порога |
+| `eval/decision.py` | Калибровка автономного принятия и отказа |
 | `scripts/make_submission.py` | Экспорт top-10, embeddings и candidates |
 | `scripts/validate_submission.py` | Проверка форматов и соответствия файлов |
 | `scripts/eval_inference_variants.py` | Сравнение TTA и wide-crop |
 | `scripts/eval_checkpoint_ensemble.py` | Выбор веса ансамбля только на dev |
 | `scripts/benchmark_reid.py` | Скорость полного пути JPEG → вектор |
 | `scripts/analyze_errors.py` | Срезы ошибок и визуальный лист промахов |
+| `scripts/eval_tracklet_pooling.py` | Проверка агрегации нескольких кадров |
 | `reid/pretrain_external.py` | Эксперимент с внешними фото и атрибутами |
-| `data/` | Локальные данные и веса, исключены из Git |
+| `weights/` | Компактные deployment-веса, входят в решение |
+| `submission/` | Три готовых конкурсных артефакта |
+| `data/` | Локальные исходные данные, исключены из Git |
 | `outputs/` | Checkpoint, отчёты и экспорты, исключены из Git |
 
 Локальный сборщик внешних изображений также исключён из Git. В репозиторий не
 попадают ни исходные фотографии, ни его журналы. Для обучения допускаются
-только вручную проверенные изображения с закрытыми номерами и лицами.
+только вручную проверенные изображения с заранее закрытыми номерными знаками и
+лицами. Текст и изображение номерного знака в обучающий набор не попадают.
 
 ## Установка
 
@@ -119,6 +140,30 @@ uv run python -m scripts.prepare_weights --arch resnet50
 
 После этого обучение и инференс в сеть не обращаются.
 
+Начальные веса - публичные ImageNet-веса из `torchvision`:
+[ConvNeXt Tiny `IMAGENET1K_V1`](https://docs.pytorch.org/vision/main/models/generated/torchvision.models.convnext_tiny.html)
+и [ResNet50 `IMAGENET1K_V2`](https://docs.pytorch.org/vision/main/models/generated/torchvision.models.resnet50.html).
+Финальные deployment-checkpoint находятся в `weights/` и для инференса не
+требуют сети.
+
+Финальный ансамбль обучен только на выданном `train.csv` и публичных
+предобученных ImageNet-весах. Локальный пилот с объявлениями не дал улучшения и
+не входит ни в финальные веса, ни в конкурсные embeddings; решение остаётся
+воспроизводимым без закрытых или проприетарных данных.
+
+## Офлайн-инференс одной командой
+
+Положите выданный организаторами `dataset.zip` в `data/` и выполните:
+
+```powershell
+docker compose run --rm inference
+```
+
+Контейнер запускается с `network_mode: none`. Результат появляется в
+`outputs/submission/`. Готовая проверенная копия результата уже находится в
+`submission/`. Если Docker Engine недоступен, тот же экспорт запускается через
+команду из следующего раздела.
+
 ## Обучение
 
 ConvNeXt Tiny:
@@ -128,6 +173,13 @@ uv run python -m reid.train --archive data/dataset.zip `
   --output outputs/convnext_tiny_256 --arch convnext_tiny `
   --init-weights data/weights/convnext_tiny_imagenet.pth `
   --epochs 12 --image-size 256 --eval-batch-size 16
+
+uv run python -m reid.train --archive data/dataset.zip `
+  --output outputs/convnext_tiny_hardbatch --arch convnext_tiny `
+  --resume outputs/convnext_tiny_256/best.pt --epochs 6 --image-size 256 `
+  --identities-per-batch 8 --views-per-identity 4 `
+  --eval-batch-size 16 --lr 0.000005 --head-lr 0.00005 `
+  --triplet-weight 1.0 --label-smoothing 0.1
 ```
 
 ResNet50 и дополнительное дообучение:
@@ -149,22 +201,34 @@ uv run python -m reid.train --archive data/dataset.zip `
 
 ## Экспорт лучшего ансамбля
 
+Компактные checkpoint для сдачи создаются из лучших обучающих checkpoint:
+
+```powershell
+uv run python -m scripts.export_deployment_checkpoint `
+  --source outputs/convnext_tiny_hardbatch/best.pt `
+  --output weights/convnext_tiny_256_fp16.pt
+
+uv run python -m scripts.export_deployment_checkpoint `
+  --source outputs/resnet50_256_finetune/best.pt `
+  --output weights/resnet50_256_fp16.pt
+```
+
 ```powershell
 uv run python -m scripts.make_submission `
   --archive data/dataset.zip `
-  --checkpoint outputs/convnext_tiny_256/best.pt `
-  --second-checkpoint outputs/resnet50_256_finetune/best.pt `
+  --checkpoint weights/convnext_tiny_256_fp16.pt `
+  --second-checkpoint weights/resnet50_256_fp16.pt `
   --first-weight 0.5 --tta-flip `
-  --refusal-threshold 0.5146225095 `
-  --output outputs/submission_ensemble_balanced --batch-size 16
+  --refusal-threshold 0.5051871538 `
+  --output outputs/submission --batch-size 16
 
 uv run python -m scripts.validate_submission `
   --archive data/dataset.zip `
-  --output outputs/submission_ensemble_balanced
+  --output outputs/submission
 ```
 
-Экспорт уже создан и проверен локально: 1 110 query, 750 gallery, 2816
-координат. Папка `outputs/submission_ensemble_balanced/` содержит:
+Экспорт создан и проверен локально: 1 110 query, 750 gallery, 2816 координат.
+Папка `submission/` в репозитории содержит:
 
 - `submission.csv` — десять ID gallery для каждого query;
 - `embeddings.npy` — сначала query, затем gallery в порядке исходных CSV;
@@ -176,8 +240,8 @@ uv run python -m scripts.validate_submission `
 from reid.infer import VehicleEnsembleEmbedder
 
 embedder = VehicleEnsembleEmbedder(
-    "outputs/convnext_tiny_256/best.pt",
-    "outputs/resnet50_256_finetune/best.pt",
+    "weights/convnext_tiny_256_fp16.pt",
+    "weights/resnet50_256_fp16.pt",
     first_weight=0.5,
     tta_flip=True,
 )
