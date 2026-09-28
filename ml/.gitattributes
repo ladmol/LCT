@@ -6,3 +6,4 @@ Makefile text eol=lf
 *.ps1 text eol=crlf
 *.pt binary
 *.npy binary
+ml/data/weights/hub/checkpoints/convnext_tiny-983f1562.pth filter=lfs diff=lfs merge=lfs -text
