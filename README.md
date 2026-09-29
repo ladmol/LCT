@@ -28,6 +28,29 @@ docker compose up --build
 
 Интерфейс: `http://localhost:5173`, Swagger API: `http://localhost:8000/docs`.
 
+### Демонстрация на Windows через Docker
+
+1. Запустите Docker Desktop и дождитесь статуса **Engine running**.
+2. Убедитесь, что на диске свободно несколько гигабайт: при первом запуске
+   Docker скачивает базовые образы Python, Node.js, PostgreSQL и Qdrant.
+3. Откройте PowerShell в корне проекта и выполните:
+
+```powershell
+git lfs pull
+docker info
+docker compose up --build
+```
+
+4. Откройте `http://localhost:5173`, перетащите два снимка в карточки и
+   нажмите **«Сравнить автомобили»**.
+5. После демонстрации остановите проект сочетанием `Ctrl+C`, затем командой
+   `docker compose down`.
+
+Если команда сообщает, что файл
+`dockerDesktopLinuxEngine` не найден, Docker Desktop ещё не запущен или его
+движок не успел загрузиться. Запустите приложение и повторите команду после
+появления статуса **Engine running**.
+
 Локальная разработка без Docker:
 
 ```bash
