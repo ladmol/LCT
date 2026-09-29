@@ -1,0 +1,15 @@
+# Local datasets, checkpoints, generated submissions, and caches.
+data/*
+outputs/
+.uv-cache/
+.venv/
+!data/.gitkeep
+
+# Deployment checkpoints are part of the offline hackathon solution.
+!weights/
+!weights/*.pt
+
+# Local-only source collection utilities.
+/scripts/collect_auto_ru.py
+/tools/probe_auto_ru.py
+/tools/download_auto_ru_assets.py
