@@ -1,0 +1,10 @@
+*.py text eol=lf
+*.md text eol=lf
+*.toml text eol=lf
+*.lock text eol=lf
+Makefile text eol=lf
+*.ps1 text eol=crlf
+*.pt binary
+*.npy binary
+weights/*.pt filter=lfs diff=lfs merge=lfs -text
+data/weights/**/*.pth filter=lfs diff=lfs merge=lfs -text

@@ -1,4 +1,21 @@
 services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      PYTHONUNBUFFERED: "1"
+
+  frontend:
+    build:
+      context: frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
   qdrant:
     image: qdrant/qdrant:latest
     ports:
